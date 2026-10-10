@@ -34,6 +34,10 @@ import {
   type RecordsPage,
 } from "../../lib/api-areas/records.ts";
 import type { FieldWire } from "../../lib/api-areas/fields.ts";
+import type { RealtimePresenceEntry } from "@tabula/realtime-client";
+import { initials } from "../../app/ui.tsx";
+import { usePresenceStore } from "../../stores/presence.ts";
+import { useOptionalBaseSession } from "../base/BaseSessionProvider.tsx";
 import { FieldDialog } from "../schema/FieldDialog.tsx";
 import { useFieldActions } from "../schema/field-actions.ts";
 import { useBaseRole, useFieldServices } from "./field-services.tsx";
@@ -426,6 +430,46 @@ export function GridView(props: GridViewProps) {
   const [editing, setEditing] = useState<(Cell & { initialText?: string | undefined }) | null>(null);
   const editingRef = useRef(editing);
   editingRef.current = editing;
+
+  // ------------------------------------------------------------------ collaborator cells
+  const session = useOptionalBaseSession();
+  const setPresence = session?.setPresence;
+  const presenceCellRecord = active?.r ?? null;
+  const presenceCellField = active?.f ?? null;
+  const presenceEditing = !!editing && editing.r === presenceCellRecord && editing.f === presenceCellField;
+  useEffect(() => {
+    if (!setPresence) return;
+    const t = setTimeout(() => {
+      setPresence({
+        cell: presenceCellRecord && presenceCellField ? { recordId: presenceCellRecord, fieldId: presenceCellField } : null,
+        editing: presenceEditing,
+      });
+    }, 120);
+    return () => clearTimeout(t);
+  }, [setPresence, presenceCellRecord, presenceCellField, presenceEditing]);
+  useEffect(() => {
+    if (!setPresence) return;
+    return () => setPresence({ cell: null, editing: false });
+  }, [setPresence]);
+
+  const peers = usePresenceStore((s) => s.peers);
+  const selfUserId = usePresenceStore((s) => s.selfUserId);
+  const peersByCell = useMemo(() => {
+    const map = new Map<string, RealtimePresenceEntry[]>();
+    for (const p of peers) {
+      const cell = p.state.cell;
+      if (!cell || (selfUserId && p.user.id === selfUserId)) continue;
+      if (p.state.tableId && p.state.tableId !== table.id) continue;
+      const key = `${cell.recordId}:${cell.fieldId}`;
+      const list = map.get(key);
+      if (list) list.push(p);
+      else map.set(key, [p]);
+    }
+    return map;
+  }, [peers, selfUserId, table.id]);
+  const peersByCellRef = useRef(peersByCell);
+  peersByCellRef.current = peersByCell;
+
   const [selectedRows, setSelectedRows] = useState<Set<string>>(() => new Set());
   const [fillTo, setFillTo] = useState<number | null>(null);
   const dragRef = useRef<null | { kind: "select" } | { kind: "fill" }>(null);
@@ -522,6 +566,11 @@ export function GridView(props: GridViewProps) {
       if (f.type === "checkbox") return false;
       setActive(cell);
       setAnchor(cell);
+      const editor = peersByCellRef.current.get(`${cell.r}:${cell.f}`)?.find((p) => p.state["editing"] === true);
+      if (editor) {
+        toastInfo(`${editor.user.name} is editing this cell`);
+        return true;
+      }
       editingRef.current = { ...cell, initialText };
       setEditing({ ...cell, initialText });
       return true;
@@ -1313,7 +1362,10 @@ export function GridView(props: GridViewProps) {
           const isEditing = editing?.r === rec.id && editing.f === f.id;
           const isFill = fillTo !== null && !!range && ni > range.bottom && ni <= fillTo && c.idx >= range.left && c.idx <= range.right;
           const isRangeCorner = !!range && ni === range.bottom && c.idx === range.right && canEditRecords && !editing;
-          const style: CSSProperties = { width: c.w };
+          const cellPeers = peersByCell.get(`${rec.id}:${f.id}`);
+          const peerEditor = cellPeers?.find((p) => p.state["editing"] === true);
+          const peer = peerEditor ?? cellPeers?.[0];
+          const style: CSSProperties & Record<"--peer-color", string> = { width: c.w, "--peer-color": peer?.color ?? "transparent" };
           if (c.frozen) style.left = c.x;
           const cls = [
             styles.cell,
@@ -1324,6 +1376,8 @@ export function GridView(props: GridViewProps) {
             isEditing ? styles.editingCell : "",
             isFill ? styles.fillPreview : "",
             wrap ? styles.cellWrap : "",
+            peer ? styles.peerCell : "",
+            peerEditor ? styles.peerEditing : "",
           ].join(" ");
           return (
             <div key={f.id} className={cls} style={style} data-cell="1" data-r={rec.id} data-f={f.id}>
@@ -1343,6 +1397,19 @@ export function GridView(props: GridViewProps) {
                   renderCellValue(f, rec.fields[f.id], { error: rec.errors?.[f.id], record: rec, fields: allFields, wrap })
                 )}
               </div>
+              {peer && !isEditing ? (
+                <span
+                  className={styles.peerBadge}
+                  title={
+                    peerEditor
+                      ? `${peerEditor.user.name} is editing`
+                      : cellPeers!.map((p) => p.user.name).join(", ")
+                  }
+                >
+                  {peerEditor ? `${peerEditor.user.name.split(" ")[0]} editing…` : initials(peer.user.name)}
+                  {!peerEditor && cellPeers!.length > 1 ? ` +${cellPeers!.length - 1}` : ""}
+                </span>
+              ) : null}
               {isRangeCorner ? (
                 <span
                   className={styles.fillHandle}

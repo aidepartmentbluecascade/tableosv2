@@ -266,6 +266,41 @@
   pointer-events: none;
 }
 
+.peerCell {
+  z-index: 3;
+}
+
+.peerCell::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 2px solid var(--peer-color);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.peerEditing {
+  background: color-mix(in srgb, var(--peer-color) 8%, var(--canvas));
+}
+
+.peerBadge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  max-width: calc(100% - 4px);
+  padding: 0 5px;
+  border-bottom-left-radius: 4px;
+  background: var(--peer-color);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
 .editingCell {
   z-index: 5;
   overflow: visible;
