@@ -35,6 +35,7 @@ export const ACTIONS: ActionInfo[] = [
   { type: "notify", label: "Send in-app notification", description: "Notify collaborators in TableOS.", icon: "◉" },
   { type: "send_email", label: "Send email", description: "Send an email to anyone.", icon: "✉" },
   { type: "webhook", label: "Send webhook", description: "POST JSON to an external URL.", icon: "⇢" },
+  { type: "script", label: "Run a script", description: "Run custom JavaScript in a secure sandbox.", icon: "{}" },
   { type: "condition", label: "Conditional group", description: "Run actions only if conditions are met.", icon: "⑂" },
 ];
 
@@ -67,9 +68,37 @@ export function defaultAction(type: ActionType, tableId: string | undefined): Au
       return { id, type, config: { to: "", subject: "", body: "" } };
     case "webhook":
       return { id, type, config: { url: "", method: "POST", timeoutMs: 10000 } };
+    case "script":
+      return { id, type, config: { script: DEFAULT_SCRIPT } };
     case "condition":
       return { id, type, config: { match: "all", conditions: [{ left: "", op: "eq", right: "" }], then: [], else: [] } };
   }
+}
+
+export const DEFAULT_SCRIPT = `// The trigger record and the results of earlier steps
+const { trigger, steps } = input.config();
+console.log("Triggered by record", trigger.record?.id);
+
+// Read and change records (tables and fields can be named)
+// const tasks = await base.findRecords("Tasks", { limit: 50 });
+// await base.updateRecord("Tasks", trigger.record.id, { Status: "Done" });
+
+// Call an external API
+// const res = await fetch("https://api.example.com/data");
+// const data = await res.json();
+
+// Make values available to later steps
+output.set("result", "ok");
+`;
+
+/** Keys a script passes on with literal `output.set("key", …)` calls. */
+export function scriptOutputKeys(script: string | undefined): string[] {
+  const keys = new Set<string>();
+  for (const line of (script ?? "").split("\n")) {
+    if (line.trim().startsWith("//")) continue;
+    for (const m of line.matchAll(/output\.set\(\s*(["'`])([^"'`]+)\1/g)) keys.add(m[2]!);
+  }
+  return [...keys];
 }
 
 /** Short human summary of an action for its card. */
@@ -90,6 +119,10 @@ export function summarizeAction(a: AutomationAction, tables: TableDto[]): string
       return a.config.to ? `Email ${a.config.to}` : "Choose recipients";
     case "webhook":
       return a.config.url ? `${a.config.method ?? "POST"} ${a.config.url}` : "Enter a URL";
+    case "script": {
+      const lines = (a.config.script ?? "").split("\n").filter((l) => l.trim() && !l.trim().startsWith("//")).length;
+      return lines ? `JavaScript, ${lines} line${lines === 1 ? "" : "s"}` : "Write a script";
+    }
     case "condition":
       return `If ${a.config.conditions?.length ?? 0} condition(s) — ${a.config.then?.length ?? 0} action(s), else ${a.config.else?.length ?? 0}`;
   }
@@ -177,6 +210,8 @@ export function availableTokens(
     } else if (a.type === "webhook") {
       out.push({ group, label: "Response status", token: `{{steps.${a.id}.status}}` });
       out.push({ group, label: "Response body", token: `{{steps.${a.id}.body}}` });
+    } else if (a.type === "script") {
+      for (const key of scriptOutputKeys(a.config.script)) out.push({ group, label: key, token: `{{steps.${a.id}.${key}}}` });
     }
   });
   out.push({ group: "Other", label: "Now (ISO time)", token: "{{now}}" });

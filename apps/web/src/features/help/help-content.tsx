@@ -465,10 +465,22 @@ ROUND({Amount} * 1.2, 2)`}</Pre>
             ["When a form is submitted", "Send in-app notification"],
             ["At a scheduled time", "Send email"],
             ["When a button is clicked", "Send webhook"],
-            ["When a webhook is received", "Conditional group (run actions only if conditions are met)"],
+            ["When a webhook is received", "Run a script"],
+            ["", "Conditional group (run actions only if conditions are met)"],
           ]}
         />
         <p>Use <b>Test</b> to try an automation, and the run history to see what happened and why something failed.</p>
+        <h3>Run a script</h3>
+        <p>
+          Write JavaScript that runs in a secure sandbox as the automation&apos;s owner. You can use <code>await</code>. Available inside the script:
+        </p>
+        <ul>
+          <li><code>input.config()</code>: the trigger (<code>trigger.record.fields</code> as text, <code>trigger.record.raw</code> as values) and earlier steps.</li>
+          <li><code>output.set(key, value)</code>: pass values to later steps as <code>{"{{steps.<step>.<key>}}"}</code>.</li>
+          <li><code>base.findRecords(table, {"{ view, limit, filter }"})</code>, <code>base.getRecord(table, id)</code>, <code>base.createRecord(table, fields)</code>, <code>base.updateRecord(table, id, fields)</code>, <code>base.deleteRecord(table, id)</code>. Tables and fields can be named or given by id.</li>
+          <li><code>fetch(url, {"{ method, headers, body }"})</code> to public addresses (up to 20 per run), and <code>console.log</code>.</li>
+        </ul>
+        <p>A script can run for 30 seconds in total, compute for up to 2 seconds without pausing, and make up to 100 base/fetch calls.</p>
       </>
     ),
   },

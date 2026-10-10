@@ -24,6 +24,7 @@ export const ACTION_TYPES = [
   "notify",
   "send_email",
   "webhook",
+  "script",
   "condition",
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
@@ -105,6 +106,8 @@ export const actionSchema: z.ZodType<ActionDef> = z.lazy(() =>
         method: z.enum(["POST", "PUT", "PATCH", "GET"]).optional(),
         headers: z.record(z.string(), z.string()).optional(),
         timeoutMs: z.number().int().min(500).max(30_000).optional(),
+        // script
+        script: z.string().max(100_000).optional(),
         // condition
         match: z.enum(["all", "any"]).optional(),
         conditions: z
@@ -158,6 +161,7 @@ export interface ActionDef {
     method?: "POST" | "PUT" | "PATCH" | "GET" | undefined;
     headers?: Record<string, string> | undefined;
     timeoutMs?: number | undefined;
+    script?: string | undefined;
     match?: "all" | "any" | undefined;
     conditions?: { left: string; op: string; right?: string | undefined }[] | undefined;
     then?: ActionDef[] | undefined;

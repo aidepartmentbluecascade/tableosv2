@@ -612,6 +612,10 @@ export function ActionEditor({
         </>
       ) : null}
 
+      {action.type === "script" ? (
+        <ScriptEditor value={cfg.script ?? ""} onChange={(script) => set({ script })} tables={tables} />
+      ) : null}
+
       {action.type === "condition" ? (
         <ConditionEditor
           baseId={baseId}
@@ -625,6 +629,55 @@ export function ActionEditor({
         />
       ) : null}
     </div>
+  );
+}
+
+function ScriptEditor({ value, onChange, tables }: { value: string; onChange: (v: string) => void; tables: TableDto[] }) {
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== "Tab" || e.shiftKey) return;
+    e.preventDefault();
+    const el = e.currentTarget;
+    const { selectionStart: s, selectionEnd: end } = el;
+    onChange(`${value.slice(0, s)}  ${value.slice(end)}`);
+    requestAnimationFrame(() => el.setSelectionRange(s + 2, s + 2));
+  };
+  return (
+    <>
+      <Field label="Script (JavaScript)" hint="Runs in a secure sandbox as the automation's owner. Use Test to see console output in the run history.">
+        <textarea
+          className={`${styles.textarea} ${styles.scriptInput}`}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          spellCheck={false}
+          rows={18}
+          aria-label="Script"
+        />
+      </Field>
+      <details className={styles.scriptRef}>
+        <summary>Script reference</summary>
+        <ul>
+          <li><code>input.config()</code>: <code>trigger</code> (with <code>trigger.record.fields</code> as text and <code>trigger.record.raw</code> as values), <code>steps</code>, <code>base</code>, <code>now</code>.</li>
+          <li><code>output.set(key, value)</code>: later steps can use <code>{"{{steps.<this step>.<key>}}"}</code>.</li>
+          <li><code>await base.findRecords(table, {"{ view, limit, filter }"})</code> returns up to 500 records.</li>
+          <li><code>await base.getRecord(table, id)</code>, <code>createRecord(table, fields)</code>, <code>updateRecord(table, id, fields)</code>, <code>deleteRecord(table, id)</code>.</li>
+          <li><code>await fetch(url, {"{ method, headers, body }"})</code> to public addresses; <code>res.json()</code> / <code>res.text()</code>.</li>
+          <li>Limits: 30 s per run, 2 s of computing without an <code>await</code>, 100 base/fetch calls, 20 fetches.</li>
+        </ul>
+        {tables.length ? (
+          <>
+            <p className={styles.muted}>Tables and fields in this base:</p>
+            <ul>
+              {tables.map((t) => (
+                <li key={t.id}>
+                  <code>{t.name}</code>: {t.fields.map((f) => f.name).join(", ")}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
+      </details>
+    </>
   );
 }
 

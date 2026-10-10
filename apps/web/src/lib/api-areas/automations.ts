@@ -20,6 +20,7 @@ export type ActionType =
   | "notify"
   | "send_email"
   | "webhook"
+  | "script"
   | "condition";
 
 export interface ScheduleConfig {
@@ -70,6 +71,7 @@ export interface ActionConfig {
   method?: "POST" | "PUT" | "PATCH" | "GET" | undefined;
   headers?: Record<string, string>;
   timeoutMs?: number;
+  script?: string;
   match?: "all" | "any";
   conditions?: BranchCondition[];
   then?: AutomationAction[];
