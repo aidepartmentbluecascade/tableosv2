@@ -3,7 +3,7 @@ import { sql } from "kysely";
 import { ApiError } from "../../http/errors.js";
 import { idFromAny } from "../schema/field-dto.js";
 
-const READ_ONLY = "This table is synced from another base, so its synced data is read-only here. Change it in the source base.";
+const READ_ONLY = "This table is synced from another source, so its synced data is read-only here. Change it at the source.";
 
 function fieldKeys(body: unknown): string[] {
   const b = (body ?? {}) as { fields?: Record<string, unknown>; records?: Array<{ fields?: Record<string, unknown> }> };

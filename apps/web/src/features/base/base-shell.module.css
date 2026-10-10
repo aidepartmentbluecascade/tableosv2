@@ -444,8 +444,77 @@
 
 .startOptions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
+}
+
+.hsSetup {
+  margin-top: 12px;
+}
+
+.hsConnect {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--tabula-color-border);
+  border-radius: var(--tabula-radius-md);
+  background: var(--tabula-color-bg-subtle, var(--tabula-color-bg));
+}
+
+.hsSteps {
+  margin: 8px 0 12px;
+  padding-left: 18px;
+  font-size: var(--tabula-font-size-sm);
+  color: var(--tabula-color-text-muted);
+  line-height: 1.5;
+}
+
+.hsSteps code {
+  font-size: 0.95em;
+}
+
+.hsRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hsRow > select,
+.hsRow > input {
+  flex: 1;
+  min-width: 0;
+}
+
+.hsRow > .label,
+.hsRow > span:first-child {
+  white-space: nowrap;
+}
+
+.hsProps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 12px;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid var(--tabula-color-border);
+  border-radius: var(--tabula-radius-md);
+}
+
+.hsProp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 3px 0;
+  font-size: var(--tabula-font-size-sm);
+  cursor: pointer;
+}
+
+.hsProp > span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .startOption {

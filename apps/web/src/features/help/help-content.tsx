@@ -300,7 +300,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     group: "Building your base",
     title: "Data from other bases (synced tables)",
     summary: "Bring another base’s table into this base, kept up to date automatically, and link to it.",
-    keywords: "cross base sync synced table link another base share data between bases mirror lookup",
+    keywords: "cross base sync synced table link another base share data between bases mirror lookup hubspot crm contacts deals companies tickets connector integration",
     body: () => (
       <>
         <p>
@@ -336,6 +336,22 @@ export const HELP_TOPICS: HelpTopic[] = [
           A sync runs with the access of the person who created it. If that person loses access to the source base, the sync stops with an error until
           someone with access sets it up again.
         </Warn>
+        <h2>Sync from HubSpot</h2>
+        <p>
+          A synced table can also come from HubSpot: contacts, companies, deals or tickets. Choose <b>Sync from HubSpot</b> when adding a table.
+        </p>
+        <ol>
+          <li>
+            In HubSpot, create a <b>private app</b> (Settings → Integrations → Private apps) with read scopes for what you want, for example{" "}
+            <code>crm.objects.contacts.read</code>. Add <code>crm.objects.owners.read</code> to see owner names.
+          </li>
+          <li>Paste the app’s access token to connect. It is stored encrypted and only you can use the connection.</li>
+          <li>Pick the object and the properties to bring in. TableOS also adds the record’s name, HubSpot ID and a link back to HubSpot.</li>
+        </ol>
+        <p>
+          The table refreshes every 15 minutes (use <b>Sync now</b> any time). Dropdown properties become select fields, numbers, dates and checkboxes
+          keep their types, and records deleted in HubSpot are removed here. Changes go one way: edit the data in HubSpot.
+        </p>
       </>
     ),
   },

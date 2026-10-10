@@ -19,6 +19,7 @@ import {
 import { connectRedis } from "../lib/redis.js";
 import { startAutomationEngine } from "../modules/automations/consumer.js";
 import { startSyncScheduler } from "../modules/sync/scheduler.js";
+import { mfaKey } from "../modules/auth/mfa-pending.js";
 
 async function main(): Promise<void> {
   loadDotEnvFile();
@@ -68,7 +69,7 @@ async function main(): Promise<void> {
     },
   );
 
-  const syncScheduler = startSyncScheduler({ db, redis }, log);
+  const syncScheduler = startSyncScheduler({ db, redis, secretKey: mfaKey(env) }, log);
   await eventBus.subscribe(DOMAIN_EVENTS_TOPIC, "table-sync", async (event: DomainEvent) => {
     await syncScheduler.onEvent(event);
   });

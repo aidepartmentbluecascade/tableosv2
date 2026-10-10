@@ -10,6 +10,9 @@ import { compileForUser } from "../access/compile.js";
 import { resolveBaseContext } from "../access/helpers.js";
 import { writeAuditEvent } from "../audit/write.js";
 import { bootstrapDefaultTable } from "../base/bootstrap-default-table.js";
+import { mfaKey } from "../auth/mfa-pending.js";
+import { loadConnection } from "../integrations/connections.js";
+import { HUBSPOT_OBJECTS, type HubSpotObject } from "../integrations/hubspot.js";
 import { loadSync, mapSourceField, runTableSync, sourceFieldsInOrder, type SyncRow } from "./engine.js";
 
 const createBody = z.object({
@@ -28,8 +31,9 @@ type TableParams = { baseId: string; tableId: string };
 export function syncDto(s: SyncRow, names: { baseName: string; tableName: string } | null) {
   return {
     id: s.id,
-    sourceBaseId: pid("bas", s.source_base_id),
-    sourceTableId: pid("tbl", s.source_table_id),
+    provider: s.provider,
+    sourceBaseId: s.source_base_id ? pid("bas", s.source_base_id) : null,
+    sourceTableId: s.source_table_id ? pid("tbl", s.source_table_id) : null,
     sourceBaseName: names?.baseName ?? null,
     sourceTableName: names?.tableName ?? null,
     status: s.status,
@@ -41,7 +45,16 @@ export function syncDto(s: SyncRow, names: { baseName: string; tableName: string
   };
 }
 
-export async function sourceNames(db: AppContext["db"], s: Pick<SyncRow, "source_base_id" | "source_table_id">) {
+export async function sourceNames(db: AppContext["db"], s: Pick<SyncRow, "provider" | "source_table_id" | "connection_id" | "source_config">) {
+  if (s.provider === "hubspot") {
+    const object = String(s.source_config?.["object"] ?? "");
+    const conn = s.connection_id ? await loadConnection(db, s.connection_id) : null;
+    return {
+      baseName: conn?.account_label ? `HubSpot (${conn.account_label})` : "HubSpot",
+      tableName: HUBSPOT_OBJECTS[object as HubSpotObject]?.label ?? object,
+    };
+  }
+  if (!s.source_table_id) return null;
   const r = await sql<{ base_name: string; table_name: string }>`
     SELECT b.name AS base_name, t.name AS table_name
     FROM data.tables t INNER JOIN core.base_directory b ON b.base_id = t.base_id
@@ -52,7 +65,7 @@ export async function sourceNames(db: AppContext["db"], s: Pick<SyncRow, "source
 }
 
 export async function registerSyncRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
-  const deps = { db: ctx.db, redis: ctx.redis, storage: ctx.storage };
+  const deps = { db: ctx.db, redis: ctx.redis, storage: ctx.storage, secretKey: mfaKey(ctx.env) };
 
   function wrap<P>(fn: (request: FastifyRequest<{ Params: P }>, reply: FastifyReply) => Promise<void>) {
     return async (request: FastifyRequest<{ Params: P }>, reply: FastifyReply) => {

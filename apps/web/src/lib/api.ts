@@ -180,8 +180,10 @@ export interface FieldDto {
 
 export interface TableSyncInfo {
   id: string;
-  sourceBaseId: string;
-  sourceTableId: string;
+  provider: "tableos" | "hubspot";
+  /** Null for external sources such as HubSpot. */
+  sourceBaseId: string | null;
+  sourceTableId: string | null;
   sourceBaseName: string | null;
   sourceTableName: string | null;
   status: "active" | "paused" | "error";

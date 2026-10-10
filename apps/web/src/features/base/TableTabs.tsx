@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { syncApi } from "../../lib/api-areas/sync.ts";
 import { SyncSourcePicker } from "./SyncSourcePicker.tsx";
+import { HubSpotSyncSetup, type HubSpotSelection } from "./HubSpotSyncSetup.tsx";
+import { HUBSPOT_OBJECTS, integrationsApi } from "../../lib/api-areas/integrations.ts";
 import { copyText } from "../../lib/ids.ts";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { BaseDetail, TableDto } from "../../lib/api.ts";
@@ -124,7 +126,7 @@ function InlineRename({
   );
 }
 
-type AddMode = "blank" | "import" | "sync";
+type AddMode = "blank" | "import" | "sync" | "hubspot";
 
 function AddTableDialog({
   baseId,
@@ -143,8 +145,18 @@ function AddTableDialog({
   const [name, setName] = useState(defaultName);
   const [mode, setMode] = useState<AddMode>(initialMode);
   const [sourceId, setSourceId] = useState("");
+  const [hubspot, setHubspot] = useState<HubSpotSelection>({ connectionId: "", object: "contacts", properties: [] });
+  const nameTouched = useRef(false);
+  useEffect(() => {
+    if (mode !== "hubspot" || nameTouched.current) return;
+    setName(`HubSpot ${HUBSPOT_OBJECTS.find((o) => o.key === hubspot.object)?.label ?? ""}`.trim());
+  }, [mode, hubspot.object]);
   const create = useMutation({
     mutationFn: async () => {
+      if (mode === "hubspot") {
+        const res = await integrationsApi.createHubSpotSync(baseId, { ...hubspot, ...(name.trim() ? { name: name.trim() } : {}) });
+        return res.tableId;
+      }
       if (mode === "sync") {
         const res = await syncApi.create(baseId, { sourceTableId: sourceId, ...(name.trim() ? { name: name.trim() } : {}) });
         if (res.error) toast.error(new Error(res.error), "The table was created, but the first sync failed");
@@ -156,12 +168,20 @@ function AddTableDialog({
       await qc.invalidateQueries({ queryKey: ["bases", baseId] });
       onCreated(tableId, mode === "import");
       if (mode === "sync") toast.success("Synced table created. It stays up to date with the source.");
+      if (mode === "hubspot") toast.success("HubSpot table created. The first sync is running; records appear as they arrive.");
     },
   });
-  const ready = mode === "sync" ? Boolean(sourceId) : Boolean(name.trim());
+  const ready =
+    mode === "sync"
+      ? Boolean(sourceId)
+      : mode === "hubspot"
+        ? Boolean(hubspot.connectionId && hubspot.properties.length && name.trim())
+        : Boolean(name.trim());
+  const syncing = mode === "sync" || mode === "hubspot";
   return (
     <Dialog
       title="Add a table"
+      wide={mode === "hubspot"}
       onClose={onClose}
       footer={
         <>
@@ -174,7 +194,7 @@ function AddTableDialog({
             disabled={!ready || create.isPending}
             onClick={() => create.mutate()}
           >
-            {create.isPending ? (mode === "sync" ? "Syncing…" : "Creating…") : mode === "import" ? "Create and import" : mode === "sync" ? "Create synced table" : "Create table"}
+            {create.isPending ? (syncing ? "Syncing…" : "Creating…") : mode === "import" ? "Create and import" : syncing ? "Create synced table" : "Create table"}
           </button>
         </>
       }
@@ -195,7 +215,10 @@ function AddTableDialog({
             value={name}
             autoFocus
             onFocus={(e) => e.currentTarget.select()}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              nameTouched.current = true;
+              setName(e.target.value);
+            }}
           />
         </div>
         <div className={uiStyles.label}>Start with</div>
@@ -227,7 +250,17 @@ function AddTableDialog({
             <strong>Sync from another base</strong>
             <span>A read-only copy of a table in another base, kept up to date. Link to it and use lookups here.</span>
           </button>
+          <button
+            type="button"
+            className={styles.startOption}
+            data-active={mode === "hubspot"}
+            onClick={() => setMode("hubspot")}
+          >
+            <strong>Sync from HubSpot</strong>
+            <span>Contacts, companies, deals or tickets from your HubSpot CRM, refreshed automatically.</span>
+          </button>
         </div>
+        {mode === "hubspot" ? <HubSpotSyncSetup baseId={baseId} value={hubspot} onChange={setHubspot} /> : null}
         {mode === "sync" ? (
           <div className={uiStyles.field}>
             <label className={uiStyles.label}>Table to sync</label>
@@ -593,6 +626,12 @@ function TablesMenu({
                 ⇄
               </span>
               <span>Sync from another base</span>
+            </button>
+            <button type="button" role="menuitem" className={uiStyles.menuItem} onClick={() => onAdd("hubspot")}>
+              <span className={uiStyles.menuIcon} aria-hidden>
+                ⇄
+              </span>
+              <span>Sync from HubSpot</span>
             </button>
           </div>
         </FloatingPanel>
@@ -1142,7 +1181,8 @@ function IdsDialog({ baseId, table, onClose }: { baseId: string; table: TableDto
       <CopyRow label="Table ID" value={table.id} />
       {table.sync ? (
         <p className={uiStyles.muted}>
-          Synced from {table.sync.sourceBaseName} › {table.sync.sourceTableName} (source table ID {table.sync.sourceTableId}).
+          Synced from {table.sync.sourceBaseName} › {table.sync.sourceTableName}
+          {table.sync.sourceTableId ? ` (source table ID ${table.sync.sourceTableId})` : ""}.
         </p>
       ) : null}
       <div className={uiStyles.label}>Field IDs</div>
