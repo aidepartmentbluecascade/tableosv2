@@ -1,7 +1,9 @@
 import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, ApiProblemError, type BaseSummary, type ViewDto } from "../lib/api.ts";
+import { api, ApiProblemError, type AuthUser, type BaseSummary, type ViewDto } from "../lib/api.ts";
+import { forgetBaseStructure, loadBaseStructure, saveBaseStructure } from "../lib/base-structure-cache.ts";
+import { authQueryKey } from "../features/auth/use-auth.ts";
 import { hiddenTableIdsOf, shellApi } from "../lib/api-areas/shell.ts";
 import {
   BaseSessionProvider,
@@ -89,7 +91,7 @@ function cachedBaseName(queryClient: QueryClient, baseId: string): string | null
   return null;
 }
 
-/** Placeholder with the base's real layout while it loads for the first time. */
+/** First-ever visit (nothing cached): the base's frame, with placeholders only where records go. */
 function BaseSkeleton({ baseId, name }: { baseId: string; name: string | null }) {
   return (
     <div className={styles.shell} aria-busy="true" aria-label="Loading base">
@@ -117,24 +119,11 @@ function BaseSkeleton({ baseId, name }: { baseId: string; name: string | null })
           ))}
         </nav>
       </header>
-      <div className={styles.tableBar}>
-        {[96, 128, 84].map((w, i) => (
-          <span key={i} className={styles.skel} style={{ width: w, height: 16, alignSelf: "center" }} />
-        ))}
-      </div>
+      <div className={styles.tableBar} />
       <div className={styles.workspace}>
-        <aside className={styles.skelSidebar}>
-          <span className={styles.skel} style={{ width: "100%", height: 30 }} />
-          {[70, 55, 80, 60].map((w, i) => (
-            <span key={i} className={styles.skel} style={{ width: `${w}%`, height: 12 }} />
-          ))}
-        </aside>
+        <aside className={styles.skelSidebar} />
         <div className={styles.content}>
-          <div className={styles.skelToolbar}>
-            {[90, 70, 60, 56, 56].map((w, i) => (
-              <span key={i} className={styles.skel} style={{ width: w, height: 14 }} />
-            ))}
-          </div>
+          <div className={styles.skelToolbar} />
           <div className={styles.skelGrid}>
             {Array.from({ length: 10 }, (_, r) => (
               <div key={r} className={styles.skelRow}>
@@ -153,10 +142,19 @@ function BaseSkeleton({ baseId, name }: { baseId: string; name: string | null })
 export function BasePage({ baseId }: { baseId: string }) {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const userId = queryClient.getQueryData<AuthUser>(authQueryKey)?.id;
   const baseQuery = useQuery({
     queryKey: ["bases", baseId],
     queryFn: () => api.getBase(baseId),
+    // Last visit's structure shows the real layout at once; only records wait.
+    placeholderData: () => loadBaseStructure(userId, baseId),
   });
+  useEffect(() => {
+    if (baseQuery.data && !baseQuery.isPlaceholderData) saveBaseStructure(userId, baseId, baseQuery.data);
+  }, [baseQuery.data, baseQuery.isPlaceholderData, userId, baseId]);
+  useEffect(() => {
+    if (baseQuery.isError) forgetBaseStructure(userId, baseId);
+  }, [baseQuery.isError, userId, baseId]);
 
   const tables = baseQuery.data?.tables ?? [];
   const { role } = useBaseRole(baseId);

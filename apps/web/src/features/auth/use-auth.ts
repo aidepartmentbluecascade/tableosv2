@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { api, ApiProblemError, request, type AuthUser } from "../../lib/api.ts";
 import { shellApi } from "../../lib/api-areas/shell.ts";
+import { clearBaseStructures } from "../../lib/base-structure-cache.ts";
 
 export const authQueryKey = ["auth", "me"] as const;
 
@@ -72,6 +73,7 @@ export function useLogout() {
     mutationFn: () => shellApi.logout(),
     onSettled: () => {
       queryClient.clear();
+      clearBaseStructures();
       void router.navigate({ to: "/login" });
     },
   });

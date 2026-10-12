@@ -158,7 +158,8 @@ export async function registerBaseRoutes(
           return;
         }
 
-        const tables = await sql<{
+        // Independent reads run in parallel; each is a round trip to the database.
+        const tablesP = sql<{
           id: string;
           name: string;
           primary_field_id: string | null;
@@ -170,7 +171,7 @@ export async function registerBaseRoutes(
           ORDER BY order_key ASC
         `.execute(ctx.db);
 
-        const fields = await sql<{
+        const fieldsP = sql<{
           id: string;
           table_id: string;
           name: string;
@@ -187,7 +188,7 @@ export async function registerBaseRoutes(
           ORDER BY order_key ASC, slot ASC
         `.execute(ctx.db);
 
-        const views = await sql<{
+        const viewsP = sql<{
           id: string;
           table_id: string;
           name: string;
@@ -216,6 +217,22 @@ export async function registerBaseRoutes(
           ORDER BY v.order_key ASC
         `.execute(ctx.db);
 
+        const [tables, fields, views, viewConfigInfo, viewRights, hiddenTableIds, syncs] = await Promise.all([
+          tablesP,
+          fieldsP,
+          viewsP,
+          // View serialization (workstream D): full config with defaults.
+          tablesP.then((t) => loadTableConfigInfo(ctx.db, t.rows.map((r) => r.id))),
+          compileForUser(ctx.db, user.id, baseId)
+            .then(viewEditRights)
+            .catch(() => ({ isBaseCreator: false, canUpdateShared: false })),
+          loadHiddenTableIds(ctx.db, user.id, baseId),
+          syncedFieldsByTable(ctx.db, baseId),
+        ]);
+        const syncInfo = new Map<string, ReturnType<typeof syncDto>>(
+          await Promise.all([...syncs].map(async ([tableId, s]) => [tableId, syncDto(s.sync, await sourceNames(ctx.db, s.sync))] as const)),
+        );
+
         const fieldNameById = new Map(fields.rows.map((f) => [f.id, f.name]));
         const fieldsByTable = new Map<string, typeof fields.rows>();
         for (const field of fields.rows) {
@@ -224,25 +241,12 @@ export async function registerBaseRoutes(
           fieldsByTable.set(field.table_id, list);
         }
 
-        // Views serialization (workstream D): full config with defaults.
-        const viewConfigInfo = await loadTableConfigInfo(
-          ctx.db,
-          tables.rows.map((t) => t.id),
-        );
-        const viewRights = await compileForUser(ctx.db, user.id, baseId)
-          .then(viewEditRights)
-          .catch(() => ({ isBaseCreator: false, canUpdateShared: false }));
         const viewsByTable = new Map<string, typeof views.rows>();
         for (const view of views.rows) {
           const list = viewsByTable.get(view.table_id) ?? [];
           list.push(view);
           viewsByTable.set(view.table_id, list);
         }
-        const hiddenTableIds = await loadHiddenTableIds(ctx.db, user.id, baseId);
-        const syncs = await syncedFieldsByTable(ctx.db, baseId);
-        const syncInfo = new Map<string, ReturnType<typeof syncDto>>();
-        for (const [tableId, s] of syncs) syncInfo.set(tableId, syncDto(s.sync, await sourceNames(ctx.db, s.sync)));
-
         void reply.send({
           id: pid("bas", baseId),
           name: base.name,
