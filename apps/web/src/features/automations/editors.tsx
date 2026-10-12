@@ -1,6 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { request, type FieldDto, type FilterAst, type TableDto } from "../../lib/api.ts";
+import { integrationsApi } from "../../lib/api-areas/integrations.ts";
+import { errorMessage } from "../../app/toast.tsx";
+import { connectionsOf, useConnections } from "../connectors/connect.tsx";
 import type {
   ActionConfig,
   AutomationAction,
@@ -451,6 +455,96 @@ function RecipientPicker({
   );
 }
 
+/** One of the editor's own Gmail / Slack connections (automations run with the accounts of whoever last edited them). */
+function ConnectionPicker({ provider, value, onChange }: { provider: "gmail" | "slack"; value: string; onChange: (id: string) => void }) {
+  const conns = useConnections();
+  const list = connectionsOf(conns.data?.connections, provider);
+  const label = provider === "gmail" ? "Gmail account" : "Slack workspace";
+  useEffect(() => {
+    if (!value && list[0]) onChange(list[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conns.data, value]);
+  if (conns.isLoading) return <p className={styles.muted}>Loading your {provider === "gmail" ? "Gmail" : "Slack"} accounts…</p>;
+  const missing = Boolean(value) && !list.some((c) => c.id === value);
+  return (
+    <div className={styles.field}>
+      <span className={styles.fieldLabel}>{label}</span>
+      {list.length ? (
+        <select className={styles.select} value={missing ? "__other" : value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
+          {missing ? <option value="__other">Someone else's account (pick one of yours)</option> : null}
+          {list.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <span className={styles.hint}>
+          You haven't connected {provider === "gmail" ? "Gmail" : "Slack"} yet.{" "}
+          <Link to="/connectors" target="_blank">
+            Connect it in Connectors
+          </Link>
+          , then come back.
+        </span>
+      )}
+      {missing ? (
+        <span className={styles.hint}>Automations run with the accounts of the person who last edited them, so this step needs one of your accounts.</span>
+      ) : null}
+    </div>
+  );
+}
+
+function SlackChannelPicker({ connectionId, value, onChange }: { connectionId: string; value: string; onChange: (id: string, name: string) => void }) {
+  const channels = useQuery({
+    queryKey: ["slack-channels", connectionId],
+    queryFn: () => integrationsApi.slackChannels(connectionId),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const list = channels.data?.channels ?? [];
+  const custom = Boolean(value) && channels.isSuccess && !list.some((c) => c.id === value);
+  return (
+    <div className={styles.field}>
+      <span className={styles.fieldLabel}>Channel</span>
+      {channels.isLoading ? <span className={styles.hint}>Loading channels…</span> : null}
+      {channels.isError ? <span className={styles.hint}>{errorMessage(channels.error)}</span> : null}
+      {channels.isSuccess ? (
+        <select
+          className={styles.select}
+          value={custom ? "__custom" : value}
+          aria-label="Slack channel"
+          onChange={(e) => {
+            if (e.target.value === "__custom") onChange("#", "");
+            else onChange(e.target.value, list.find((c) => c.id === e.target.value)?.name ?? "");
+          }}
+        >
+          <option value="">Choose a channel…</option>
+          {list.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.isPrivate ? "🔒 " : "#"}
+              {c.name}
+              {c.isMember ? "" : " (bot not in channel)"}
+            </option>
+          ))}
+          <option value="__custom">Other (channel name or ID)…</option>
+        </select>
+      ) : null}
+      {custom || channels.isError ? (
+        <input
+          className={styles.input}
+          value={value}
+          placeholder="#general or C0123456789"
+          aria-label="Channel name or ID"
+          onChange={(e) => onChange(e.target.value, e.target.value.replace(/^#/, ""))}
+        />
+      ) : null}
+      {value && !custom && list.find((c) => c.id === value && !c.isMember && c.isPrivate) ? (
+        <span className={styles.hint}>Invite the bot to this private channel in Slack (/invite @your-app) or posting fails.</span>
+      ) : null}
+    </div>
+  );
+}
+
 export function ActionEditor({
   baseId,
   action,
@@ -578,6 +672,49 @@ export function ActionEditor({
           </Field>
           <Field label="Message">
             <TokenInput value={cfg.body ?? ""} onChange={(v) => set({ body: v })} tokens={tokens} multiline ariaLabel="Message" />
+          </Field>
+        </>
+      ) : null}
+
+      {action.type === "gmail_send" ? (
+        <>
+          <ConnectionPicker provider="gmail" value={cfg.connectionId ?? ""} onChange={(connectionId) => set({ connectionId })} />
+          <Field label="To" hint="Separate addresses with commas.">
+            <TokenInput value={cfg.to ?? ""} onChange={(v) => set({ to: v })} tokens={tokens} ariaLabel="To" />
+          </Field>
+          <div className={styles.row2}>
+            <Field label="Cc">
+              <TokenInput value={cfg.cc ?? ""} onChange={(v) => set({ cc: v })} tokens={tokens} ariaLabel="Cc" />
+            </Field>
+            <Field label="Bcc">
+              <TokenInput value={cfg.bcc ?? ""} onChange={(v) => set({ bcc: v })} tokens={tokens} ariaLabel="Bcc" />
+            </Field>
+          </div>
+          <Field label="Subject">
+            <TokenInput value={cfg.subject ?? ""} onChange={(v) => set({ subject: v })} tokens={tokens} ariaLabel="Subject" />
+          </Field>
+          <Field label="Message" hint="Sent as plain text from your Gmail address; it appears in your Sent folder.">
+            <TokenInput value={cfg.body ?? ""} onChange={(v) => set({ body: v })} tokens={tokens} multiline ariaLabel="Message" />
+          </Field>
+        </>
+      ) : null}
+
+      {action.type === "slack_message" ? (
+        <>
+          <ConnectionPicker
+            provider="slack"
+            value={cfg.connectionId ?? ""}
+            onChange={(connectionId) => set({ connectionId, channel: "", channelName: "" })}
+          />
+          {cfg.connectionId ? (
+            <SlackChannelPicker
+              connectionId={cfg.connectionId}
+              value={cfg.channel ?? ""}
+              onChange={(channel, channelName) => set({ channel, channelName })}
+            />
+          ) : null}
+          <Field label="Message" hint="Slack formatting works: *bold*, _italic_, <https://example.com|links>.">
+            <TokenInput value={cfg.text ?? ""} onChange={(v) => set({ text: v })} tokens={tokens} multiline ariaLabel="Slack message" />
           </Field>
         </>
       ) : null}

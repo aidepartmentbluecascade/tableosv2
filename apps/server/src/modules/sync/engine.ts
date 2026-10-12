@@ -10,7 +10,9 @@ import { loadTableFieldRows } from "../schema/table-schema.js";
 import { createFieldInTx, dedupeName, deleteFieldInTx, setPrimaryFieldInTx, updateFieldInTx, type SchemaOpContext } from "../schema/field-ops.js";
 import { createRecordsInTx, deleteRecordsInTx, MAX_BATCH, updateRecordsInTx, type WriteContext } from "../records/write.js";
 import { loadSerializeFields, serializeRecordsByIds, type SerializeFieldRow } from "../records/serialize.js";
-import { loadConnection, openCredentials } from "../integrations/connections.js";
+import { airtableSource, parseAirtableConfig } from "../integrations/airtable.js";
+import { loadConnection, openCredentials, type ConnectionRow } from "../integrations/connections.js";
+import { gmailSource, gmailTokenProvider, parseGmailConfig } from "../integrations/gmail.js";
 import { hubspotSource, parseHubSpotConfig, SearchTooLarge } from "../integrations/hubspot.js";
 import { hasRejectedPushes, heldRecordIds, prunePushes, pushHubSpotEdits } from "../integrations/hubspot-push.js";
 import { SyncBusyError, SyncError, type Conv, type MappedField, type SourceField, type SyncSource } from "./source.js";
@@ -32,9 +34,11 @@ export interface SyncDeps {
   storage?: TabulaStorage | null;
   /** Decrypts stored connection credentials (external sources). */
   secretKey?: Buffer | null;
+  /** OAuth client used to refresh Gmail access. */
+  google?: { GOOGLE_CLIENT_ID?: string | undefined; GOOGLE_CLIENT_SECRET?: string | undefined } | null;
 }
 
-export type SyncProvider = "tableos" | "hubspot";
+export type SyncProvider = "tableos" | "hubspot" | "airtable" | "gmail";
 
 export interface SyncRow {
   id: string;
@@ -272,17 +276,37 @@ async function tableSource(deps: SyncDeps, sync: SyncRow): Promise<SyncSource> {
   return { fields, rows };
 }
 
-async function hubspotSyncSource(deps: SyncDeps, sync: SyncRow, since: Date | null): Promise<SyncSource> {
+async function syncConnection(deps: SyncDeps, sync: SyncRow, label: string): Promise<{ conn: ConnectionRow; key: Buffer }> {
   const conn = sync.connection_id ? await loadConnection(deps.db, sync.connection_id) : null;
-  if (!conn) throw new SyncError("The HubSpot connection for this sync was removed. Connect HubSpot again and set up a new sync.");
+  if (!conn) throw new SyncError(`The ${label} connection for this sync was removed. Connect ${label} again and set up a new sync.`);
   if (!deps.secretKey) throw new SyncError("The server has no encryption key configured for connections");
-  return hubspotSource(openCredentials(conn, deps.secretKey).accessToken, parseHubSpotConfig(sync.source_config), { since });
+  return { conn, key: deps.secretKey };
+}
+
+async function hubspotSyncSource(deps: SyncDeps, sync: SyncRow, since: Date | null): Promise<SyncSource> {
+  const { conn, key } = await syncConnection(deps, sync, "HubSpot");
+  return hubspotSource(openCredentials(conn, key).accessToken, parseHubSpotConfig(sync.source_config), { since });
+}
+
+async function airtableSyncSource(deps: SyncDeps, sync: SyncRow): Promise<SyncSource> {
+  const { conn, key } = await syncConnection(deps, sync, "Airtable");
+  return airtableSource(openCredentials(conn, key).accessToken, parseAirtableConfig(sync.source_config));
+}
+
+async function gmailSyncSource(deps: SyncDeps, sync: SyncRow): Promise<SyncSource> {
+  const { conn, key } = await syncConnection(deps, sync, "Gmail");
+  const token = gmailTokenProvider(deps.db, deps.google ?? {}, conn, key);
+  return gmailSource(token, parseGmailConfig(sync.source_config), conn.account_id);
 }
 
 export function openSyncSource(deps: SyncDeps, sync: SyncRow, since: Date | null = null): Promise<SyncSource> {
   switch (sync.provider) {
     case "hubspot":
       return hubspotSyncSource(deps, sync, since);
+    case "airtable":
+      return airtableSyncSource(deps, sync);
+    case "gmail":
+      return gmailSyncSource(deps, sync);
     default:
       return tableSource(deps, sync);
   }

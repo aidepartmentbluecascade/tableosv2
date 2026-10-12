@@ -1,8 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { HUBSPOT_OBJECTS, integrationsApi, type HubSpotObject } from "../../lib/api-areas/integrations.ts";
 import { uiStyles } from "../../app/ui.tsx";
-import { errorMessage, toast } from "../../app/toast.tsx";
+import { errorMessage } from "../../app/toast.tsx";
+import { confirmDisconnect, ConnectTokenForm, connectionsOf, useConnections, useDisconnect } from "../connectors/connect.tsx";
 import styles from "./base-shell.module.css";
 
 export interface HubSpotSelection {
@@ -10,69 +11,6 @@ export interface HubSpotSelection {
   object: HubSpotObject;
   properties: string[];
   twoWay: boolean;
-}
-
-export function ConnectHubSpot({ baseId, onConnected, onCancel }: { baseId: string; onConnected: (id: string) => void; onCancel?: () => void }) {
-  const qc = useQueryClient();
-  const [token, setToken] = useState("");
-  const [name, setName] = useState("");
-  const connect = useMutation({
-    mutationFn: () => integrationsApi.connectHubSpot(baseId, { accessToken: token.trim(), ...(name.trim() ? { name: name.trim() } : {}) }),
-    onSuccess: async (res) => {
-      await qc.invalidateQueries({ queryKey: ["integration-connections", baseId] });
-      onConnected(res.connection.id);
-    },
-  });
-  return (
-    <div className={styles.hsConnect}>
-      <strong>Connect a HubSpot account</strong>
-      <ol className={styles.hsSteps}>
-        <li>
-          In HubSpot, open <em>Settings → Integrations → Private apps</em> and create a private app (or use{" "}
-          <em>Development → Legacy apps</em> on newer accounts).
-        </li>
-        <li>
-          Under <em>Scopes</em>, add read access for what you want to sync: <code>crm.objects.contacts.read</code>,{" "}
-          <code>crm.objects.companies.read</code>, <code>crm.objects.deals.read</code>, <code>tickets</code>. Add{" "}
-          <code>crm.objects.owners.read</code> to see owner names. For two-way sync also add the matching write scopes (
-          <code>crm.objects.contacts.write</code>, <code>crm.objects.companies.write</code>, <code>crm.objects.deals.write</code>).
-        </li>
-        <li>Create the app and paste its access token here.</li>
-      </ol>
-      <div className={uiStyles.field}>
-        <label className={uiStyles.label} htmlFor="hs-name">
-          Account name (optional)
-        </label>
-        <input id="hs-name" className={uiStyles.input} value={name} placeholder="e.g. Sales portal" onChange={(e) => setName(e.target.value)} />
-      </div>
-      <div className={uiStyles.field}>
-        <label className={uiStyles.label} htmlFor="hs-token">
-          Private app access token
-        </label>
-        <input
-          id="hs-token"
-          className={uiStyles.input}
-          type="password"
-          autoComplete="off"
-          value={token}
-          placeholder="pat-…"
-          onChange={(e) => setToken(e.target.value)}
-        />
-        <span className={uiStyles.muted}>Stored encrypted. Only you can use this connection.</span>
-      </div>
-      {connect.isError ? <p className={uiStyles.error}>{errorMessage(connect.error)}</p> : null}
-      <div className={styles.hsRow}>
-        <button type="button" className={uiStyles.btnPrimary} disabled={token.trim().length < 10 || connect.isPending} onClick={() => connect.mutate()}>
-          {connect.isPending ? "Checking…" : "Connect"}
-        </button>
-        {onCancel ? (
-          <button type="button" className={uiStyles.btn} onClick={onCancel}>
-            Cancel
-          </button>
-        ) : null}
-      </div>
-    </div>
-  );
 }
 
 /** Pick (or add) a HubSpot connection, an object, and the properties to sync. */
@@ -85,11 +23,10 @@ export function HubSpotSyncSetup({
   value: HubSpotSelection;
   onChange: (next: HubSpotSelection) => void;
 }) {
-  const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState("");
-  const conns = useQuery({ queryKey: ["integration-connections", baseId], queryFn: () => integrationsApi.connections(baseId) });
-  const list = conns.data?.connections.filter((c) => c.provider === "hubspot") ?? [];
+  const conns = useConnections();
+  const list = connectionsOf(conns.data?.connections, "hubspot");
   const connId = value.connectionId;
 
   useEffect(() => {
@@ -115,14 +52,7 @@ export function HubSpotSyncSetup({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.data, connId, value.object]);
 
-  const remove = useMutation({
-    mutationFn: (id: string) => integrationsApi.disconnect(baseId, id),
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ["integration-connections", baseId] });
-      toast.success("HubSpot account disconnected");
-    },
-    onError: (err) => toast.error(err, "Could not disconnect"),
-  });
+  const remove = useDisconnect();
 
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -134,11 +64,11 @@ export function HubSpotSyncSetup({
   if (conns.isError) return <p className={uiStyles.error}>{errorMessage(conns.error)}</p>;
   if (!list.length || adding) {
     return (
-      <ConnectHubSpot
-        baseId={baseId}
-        onConnected={(id) => {
+      <ConnectTokenForm
+        provider="hubspot"
+        onConnected={(c) => {
           setAdding(false);
-          onChange({ ...value, connectionId: id, properties: [] });
+          onChange({ ...value, connectionId: c.id, properties: [] });
         }}
         {...(list.length ? { onCancel: () => setAdding(false) } : {})}
       />
@@ -184,7 +114,7 @@ export function HubSpotSyncSetup({
             disabled={remove.isPending}
             onClick={() => {
               const c = list.find((x) => x.id === connId);
-              if (c && window.confirm(`Disconnect “${c.name}”? Tables synced with it stop updating (their data stays).`)) remove.mutate(c.id);
+              if (c && confirmDisconnect(c)) remove.mutate(c);
             }}
           >
             Disconnect

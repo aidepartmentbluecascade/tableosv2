@@ -45,6 +45,14 @@ export function AccountMenu() {
           },
         },
         {
+          key: "connectors",
+          label: "Connectors",
+          icon: "⇄",
+          onSelect: () => {
+            void router.navigate({ to: "/connectors" });
+          },
+        },
+        {
           key: "admin",
           label: "Members & access",
           icon: "⚿",

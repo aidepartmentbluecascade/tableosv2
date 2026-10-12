@@ -33,6 +33,8 @@ const PUBLIC_PREFIXES = [
   "/v1/auth/login",
   "/v1/auth/google",
   "/v1/auth/google/callback",
+  // Identified by the single-use OAuth state, which is bound to the user who started it.
+  "/v1/connections/gmail/callback",
   "/v1/auth/mfa/verify",
   "/v1/auth/logout",
 ];

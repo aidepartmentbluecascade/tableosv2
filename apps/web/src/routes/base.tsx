@@ -5,6 +5,7 @@ import { api, ApiProblemError, type AuthUser, type BaseSummary, type ViewDto } f
 import { forgetBaseStructure, loadBaseStructure, saveBaseStructure } from "../lib/base-structure-cache.ts";
 import { authQueryKey } from "../features/auth/use-auth.ts";
 import { hiddenTableIdsOf, shellApi } from "../lib/api-areas/shell.ts";
+import { connectionsQueryKey } from "../lib/api-areas/integrations.ts";
 import {
   BaseSessionProvider,
   useBaseSession,
@@ -171,6 +172,24 @@ export function BasePage({ baseId }: { baseId: string }) {
   const clearOpenAdd = useCallback(() => setOpenAdd(null), []);
   const [baseDialog, setBaseDialog] = useState<"rename" | "delete" | null>(null);
   const [pendingImport, setPendingImport] = useState(() => readSearchFlag("import"));
+
+  // Back from "Sign in with Google" (Gmail connector started inside this base).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("connected");
+    const connectError = params.get("connectError");
+    if (!connected && !connectError) return;
+    for (const k of ["connected", "reconnected", "connectError"]) params.delete(k);
+    const q = params.toString();
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${q ? `?${q}` : ""}`);
+    if (connectError) {
+      toast.error(new Error(connectError), "Gmail wasn't connected");
+      return;
+    }
+    toast.success("Gmail connected");
+    void queryClient.invalidateQueries({ queryKey: connectionsQueryKey });
+    setOpenAdd("gmail");
+  }, [queryClient]);
 
   // `?table=tbl_…` (search results, notification links) selects the table.
   const tableParam = useRouterState({
@@ -593,7 +612,6 @@ export function BasePage({ baseId }: { baseId: string }) {
       {trashOpen ? <TrashDialog baseId={baseId} onClose={() => setTrashOpen(false)} /> : null}
       {connectorsOpen ? (
         <ConnectorsDialog
-          baseId={baseId}
           tables={tables}
           onClose={() => setConnectorsOpen(false)}
           onOpenTable={(id) => {
@@ -602,10 +620,10 @@ export function BasePage({ baseId }: { baseId: string }) {
             setActiveTableId(id);
             setActiveViewId(null);
           }}
-          onSyncTable={() => {
+          onSyncTable={(mode) => {
             setConnectorsOpen(false);
             setBaseTab("data");
-            setOpenAdd("hubspot");
+            setOpenAdd(mode);
           }}
         />
       ) : null}

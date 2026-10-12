@@ -300,7 +300,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     group: "Building your base",
     title: "Data from other bases (synced tables)",
     summary: "Bring another base’s table into this base, kept up to date automatically, and link to it.",
-    keywords: "cross base sync synced table link another base share data between bases mirror lookup hubspot crm contacts deals companies tickets connector integration",
+    keywords: "cross base sync synced table link another base share data between bases mirror lookup hubspot crm contacts deals companies tickets connector integration airtable gmail email inbox slack connectors",
     body: () => (
       <>
         <p>
@@ -359,6 +359,32 @@ export const HELP_TOPICS: HelpTopic[] = [
           deleted in HubSpot. If HubSpot rejects a value (for example an unknown dropdown option), the bar shows why and HubSpot’s value comes back on
           the next sync. Only the person who set up the sync can turn two-way on, since edits are written with their HubSpot account.
         </p>
+        <h2>Connectors</h2>
+        <p>
+          Your connected accounts live under <b>Account menu → Connectors</b> and work in every base you can edit. Only you can use the accounts you
+          connect; teammates connect their own.
+        </p>
+        <ul>
+          <li>
+            <b>Airtable</b> — create a personal access token with <code>data.records:read</code> and <code>schema.bases:read</code> and access to your
+            bases, then choose <b>Sync from Airtable</b> when adding a table. Pick a base, a table and all or some fields. The sync is one-way:
+            Airtable stays the source, linked records show the linked record’s name, and attachments show their file names and links.
+          </li>
+          <li>
+            <b>Gmail</b> — <b>Sign in with Google</b> and allow reading and sending email. Choose <b>Sync from Gmail</b> to bring messages matching a
+            Gmail search (for example <code>in:inbox</code>) into a table, and use the <b>Send email via Gmail</b> automation step to send from your
+            own address.
+          </li>
+          <li>
+            <b>Slack</b> — create a Slack app with the bot scopes <code>chat:write</code> and <code>channels:read</code>, install it and paste its bot
+            token. The <b>Send Slack message</b> automation step then posts to any channel the bot is in (invite it with{" "}
+            <code>/invite @your-app</code>).
+          </li>
+        </ul>
+        <Warn>
+          Automations run with the accounts of the person who last edited them. If someone else edits an automation with a Gmail or Slack step, they
+          need to pick one of their own accounts in that step.
+        </Warn>
       </>
     ),
   },

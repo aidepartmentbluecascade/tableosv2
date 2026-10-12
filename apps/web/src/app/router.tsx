@@ -19,6 +19,7 @@ import { ContactsPage } from "../routes/contacts.tsx";
 import { AccountPage } from "../features/account/AccountPage.tsx";
 import { AcceptInvite } from "../features/account/AcceptInvite.tsx";
 import { AdminPage, type AdminTab } from "../features/admin/AdminPage.tsx";
+import { ConnectorsPage, type ConnectorsNotice } from "../features/connectors/ConnectorsPage.tsx";
 import { DeviceBanner } from "../features/admin/DeviceBanner.tsx";
 import { HelpPage } from "../features/help/HelpPage.tsx";
 
@@ -165,6 +166,34 @@ const accountRoute = createRoute({
   },
 });
 
+const connectorsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/connectors",
+  validateSearch: (search: Record<string, unknown>): ConnectorsNotice => ({
+    ...(typeof search.connected === "string" ? { connected: search.connected } : {}),
+    ...(search.reconnected !== undefined ? { reconnected: String(search.reconnected) } : {}),
+    ...(typeof search.connectError === "string" ? { connectError: search.connectError } : {}),
+  }),
+  beforeLoad: async () => {
+    const me = await ensureAuth();
+    return { me };
+  },
+  component: function ConnectorsRouteComponent() {
+    const notice = connectorsRoute.useSearch();
+    const navigate = connectorsRoute.useNavigate();
+    return (
+      <ConnectorsPage
+        notice={notice}
+        onNoticeShown={() => void navigate({ search: {}, replace: true })}
+        onBack={() => {
+          if (window.history.length > 1 && !notice.connected && !notice.connectError) window.history.back();
+          else void navigate({ to: "/" });
+        }}
+      />
+    );
+  },
+});
+
 const ADMIN_TABS: AdminTab[] = ["people", "devices", "tokens", "settings"];
 
 const adminRoute = createRoute({
@@ -262,6 +291,7 @@ const routeTree = rootRoute.addChildren([
   baseRoute,
   contactsRoute,
   accountRoute,
+  connectorsRoute,
   adminRoute,
   helpIndexRoute,
   helpRoute,

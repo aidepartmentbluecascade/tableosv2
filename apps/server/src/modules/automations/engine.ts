@@ -7,6 +7,10 @@ import { isIP } from "node:net";
 import { pid } from "../../lib/public-ids.js";
 import { compileForUser } from "../access/compile.js";
 import { createServiceSession, revokeSession } from "../auth/session.js";
+import { mfaKey } from "../auth/mfa-pending.js";
+import { loadConnection, openCredentials, PROVIDER_LABELS, type ConnectionProvider, type ConnectionRow } from "../integrations/connections.js";
+import { buildRawEmail, GmailClient, GmailError, gmailTokenProvider, invalidAddresses, parseAddresses } from "../integrations/gmail.js";
+import { SlackClient, SlackError } from "../integrations/slack.js";
 import { AutomationApiClient, AutomationApiError, type BaseDetailLite } from "./api-client.js";
 import { evaluateWireFilter } from "./filter-eval.js";
 import { sendEmail } from "./mailer.js";
@@ -316,6 +320,14 @@ async function runAction(ex: ExecCtx, action: ActionDef): Promise<StepResult> {
         output = { emailId: res.id, status: res.status, to, subject };
         break;
       }
+      case "gmail_send": {
+        output = await gmailSendAction(ex, cfg);
+        break;
+      }
+      case "slack_message": {
+        output = await slackMessageAction(ex, cfg);
+        break;
+      }
       case "webhook": {
         output = await webhookAction(ex, cfg);
         break;
@@ -447,6 +459,54 @@ async function notifyAction(ex: ExecCtx, cfg: ActionDef["config"]): Promise<unkn
   }
   if (delivered.length === 0) throw new StepError("None of the recipients has access to this base");
   return { notified: delivered, skipped, title };
+}
+
+/** A connection of the automation's owner (the person who last edited it); connections are personal. */
+async function ownerConnection(ex: ExecCtx, id: string | undefined, provider: ConnectionProvider): Promise<ConnectionRow> {
+  const label = PROVIDER_LABELS[provider];
+  if (!id) throw new StepError(`Choose a ${label} account`);
+  const conn = /^[0-9a-f-]{36}$/i.test(id) ? await loadConnection(ex.deps.db, id) : null;
+  if (!conn || conn.provider !== provider) throw new StepError(`The ${label} account for this step was disconnected. Pick another one.`);
+  if (conn.user_id !== ex.run.a_owner) {
+    throw new StepError(`This ${label} account belongs to someone else. Automations use the accounts of the person who last edited them; pick one of yours.`);
+  }
+  return conn;
+}
+
+async function gmailSendAction(ex: ExecCtx, cfg: ActionDef["config"]): Promise<unknown> {
+  const conn = await ownerConnection(ex, cfg.connectionId, "gmail");
+  const to = parseAddresses(interpolate(cfg.to ?? "", ex.tokens));
+  const cc = parseAddresses(interpolate(cfg.cc ?? "", ex.tokens));
+  const bcc = parseAddresses(interpolate(cfg.bcc ?? "", ex.tokens));
+  if (to.length === 0) throw new StepError("“To” resolved to no email addresses");
+  const bad = invalidAddresses([...to, ...cc, ...bcc]);
+  if (bad.length) throw new StepError(`Not an email address: ${bad.slice(0, 3).join(", ")}`);
+  if (to.length + cc.length + bcc.length > 100) throw new StepError("Gmail steps can send to at most 100 recipients");
+  const subject = interpolate(cfg.subject ?? `Message from ${ex.run.a_name}`, ex.tokens);
+  const text = interpolate(cfg.body ?? "", ex.tokens);
+  const client = new GmailClient(gmailTokenProvider(ex.deps.db, ex.deps.env, conn, mfaKey(ex.deps.env)));
+  try {
+    const sent = await client.send(buildRawEmail({ from: conn.account_id ?? conn.name, to, cc, bcc, subject, text }));
+    return { messageId: sent.id, threadId: sent.threadId, from: conn.account_id, to, subject };
+  } catch (err) {
+    if (err instanceof GmailError) throw new StepError(err.message, err.status === 0 || err.status === 429 || err.status >= 500);
+    throw err;
+  }
+}
+
+async function slackMessageAction(ex: ExecCtx, cfg: ActionDef["config"]): Promise<unknown> {
+  const conn = await ownerConnection(ex, cfg.connectionId, "slack");
+  const channel = interpolate(cfg.channel ?? "", ex.tokens).trim().replace(/^#/, "");
+  if (!channel) throw new StepError("Choose a Slack channel");
+  const text = interpolate(cfg.text ?? "", ex.tokens);
+  if (!text.trim()) throw new StepError("The Slack message is empty");
+  try {
+    const posted = await new SlackClient(openCredentials(conn, mfaKey(ex.deps.env)).accessToken).postMessage(channel, text.slice(0, 40_000));
+    return { channel: posted.channel, ts: posted.ts, text };
+  } catch (err) {
+    if (err instanceof SlackError) throw new StepError(err.message, err.retryable);
+    throw err;
+  }
 }
 
 async function webhookAction(ex: ExecCtx, cfg: ActionDef["config"]): Promise<unknown> {

@@ -1,40 +1,29 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import type { TableDto } from "../../lib/api.ts";
-import { integrationsApi } from "../../lib/api-areas/integrations.ts";
+import type { ConnectorProvider } from "../../lib/api-areas/integrations.ts";
 import { Dialog, uiStyles } from "../../app/ui.tsx";
-import { errorMessage, toast } from "../../app/toast.tsx";
-import { ConnectHubSpot } from "./HubSpotSyncSetup.tsx";
+import { errorMessage } from "../../app/toast.tsx";
+import { confirmDisconnect, ConnectProvider, connectionsOf, PROVIDERS, ProviderLogo, useConnections, useDisconnect } from "../connectors/connect.tsx";
+import type { AddMode } from "./TableTabs.tsx";
 import styles from "./base-shell.module.css";
 
-/** Tools → Connectors: external accounts linked to this base and the tables synced from them. */
+const SYNCABLE: Partial<Record<ConnectorProvider, AddMode>> = { hubspot: "hubspot", airtable: "airtable", gmail: "gmail" };
+
+/** Tools → Connectors: your connected accounts and the tables in this base synced from them. */
 export function ConnectorsDialog({
-  baseId,
   tables,
   onOpenTable,
   onSyncTable,
   onClose,
 }: {
-  baseId: string;
   tables: TableDto[];
   onOpenTable: (tableId: string) => void;
-  onSyncTable: () => void;
+  onSyncTable: (mode: AddMode) => void;
   onClose: () => void;
 }) {
-  const qc = useQueryClient();
-  const [connecting, setConnecting] = useState(false);
-  const conns = useQuery({ queryKey: ["integration-connections", baseId], queryFn: () => integrationsApi.connections(baseId) });
-  const remove = useMutation({
-    mutationFn: (id: string) => integrationsApi.disconnect(baseId, id),
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ["integration-connections", baseId] });
-      await qc.invalidateQueries({ queryKey: ["bases", baseId] });
-      toast.success("HubSpot account disconnected");
-    },
-    onError: (err) => toast.error(err, "Could not disconnect"),
-  });
-  const list = conns.data?.connections ?? [];
-  const synced = tables.filter((t) => t.sync?.provider === "hubspot");
+  const conns = useConnections();
+  const remove = useDisconnect();
+  const gmailAvailable = conns.data?.providers.gmail.available ?? false;
 
   return (
     <Dialog
@@ -43,81 +32,92 @@ export function ConnectorsDialog({
       wide
       footer={
         <div className={styles.hsRow}>
-          {!connecting ? (
-            <button type="button" className={uiStyles.btn} onClick={() => setConnecting(true)}>
-              + Connect HubSpot account
-            </button>
-          ) : null}
-          <button type="button" className={uiStyles.btnPrimary} disabled={!list.length} onClick={onSyncTable}>
-            Sync a table from HubSpot
+          <Link to="/connectors" className={uiStyles.btn} style={{ textDecoration: "none" }}>
+            Manage all connectors
+          </Link>
+          <button type="button" className={uiStyles.btnPrimary} onClick={onClose}>
+            Done
           </button>
         </div>
       }
     >
       <p className={uiStyles.muted}>
-        Bring records from other apps into this base as synced tables. HubSpot contacts, companies, deals and tickets are supported; turn on
-        two-way sync on a table to write edits back to HubSpot.
+        Accounts you connect work in all of your bases. Sync tables from Airtable, HubSpot or Gmail into this base, and use Gmail or Slack in automation
+        steps.
       </p>
       {conns.isLoading ? <p className={uiStyles.muted}>Loading…</p> : null}
       {conns.isError ? <p className={uiStyles.error}>{errorMessage(conns.error)}</p> : null}
-      {conns.data && !list.length && !connecting ? <p className={styles.connEmpty}>No accounts connected yet.</p> : null}
       <ul className={styles.connList}>
-        {list.map((c) => {
-          const used = synced.filter((t) => t.sync?.connectionId === c.id);
+        {PROVIDERS.map((p) => {
+          const list = connectionsOf(conns.data?.connections, p.key);
+          const addMode = SYNCABLE[p.key];
           return (
-            <li key={c.id} className={styles.connItem}>
+            <li key={p.key} className={styles.connItem}>
               <div className={styles.connHead}>
-                <span className={styles.connLogo} aria-hidden>
-                  H
-                </span>
+                <ProviderLogo provider={p.key} size="sm" />
                 <div className={styles.connInfo}>
-                  <strong>{c.name}</strong>
-                  <span className={uiStyles.muted}>
-                    HubSpot{c.accountId ? ` · portal ${c.accountId}` : ""} · connected {new Date(c.createdAt).toLocaleDateString()}
-                  </span>
+                  <strong>{p.label}</strong>
+                  <span className={uiStyles.muted}>{p.uses.join(" · ")}</span>
                 </div>
-                <button
-                  type="button"
-                  className={uiStyles.btnGhost}
-                  disabled={remove.isPending}
-                  onClick={() => {
-                    if (window.confirm(`Disconnect “${c.name}”? Tables synced with it stop updating (their data stays).`)) remove.mutate(c.id);
-                  }}
-                >
-                  Disconnect
-                </button>
+                {addMode && list.length ? (
+                  <button type="button" className={uiStyles.btn} onClick={() => onSyncTable(addMode)}>
+                    Sync a table
+                  </button>
+                ) : null}
               </div>
-              {used.length ? (
-                <ul className={styles.connTables}>
-                  {used.map((t) => (
-                    <li key={t.id}>
-                      <button type="button" className={styles.connTable} onClick={() => onOpenTable(t.id)}>
-                        <span>{t.name}</span>
-                        <span className={uiStyles.muted}>
-                          {t.sync?.sourceTableName} · {t.sync?.twoWay ? "two-way" : "one-way"}
-                          {t.sync?.status === "paused" ? " · paused" : t.sync?.status === "error" ? " · failing" : ""}
-                        </span>
+              {list.map((c) => {
+                const used = tables.filter((t) => t.sync?.connectionId === c.id);
+                return (
+                  <div key={c.id} className={styles.connAccount}>
+                    <div className={styles.connHead}>
+                      <div className={styles.connInfo}>
+                        <span>{c.name}</span>
+                        <span className={uiStyles.muted}>connected {new Date(c.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className={uiStyles.btnGhost}
+                        disabled={remove.isPending}
+                        onClick={() => {
+                          if (confirmDisconnect(c)) remove.mutate(c);
+                        }}
+                      >
+                        Disconnect
                       </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className={styles.connNone}>No tables in this base use this account yet.</p>
-              )}
+                    </div>
+                    {used.length ? (
+                      <ul className={styles.connTables}>
+                        {used.map((t) => (
+                          <li key={t.id}>
+                            <button type="button" className={styles.connTable} onClick={() => onOpenTable(t.id)}>
+                              <span>{t.name}</span>
+                              <span className={uiStyles.muted}>
+                                {t.sync?.sourceTableName} · {t.sync?.twoWay ? "two-way" : "one-way"}
+                                {t.sync?.status === "paused" ? " · paused" : t.sync?.status === "error" ? " · failing" : ""}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : addMode ? (
+                      <p className={styles.connNone}>No tables in this base use this account yet.</p>
+                    ) : null}
+                  </div>
+                );
+              })}
+              {conns.data ? (
+                <div className={styles.connAdd}>
+                  <ConnectProvider
+                    provider={p.key}
+                    gmailAvailable={gmailAvailable}
+                    {...(list.length ? { buttonLabel: p.key === "gmail" ? "Connect another Google account" : "+ Connect another account" } : {})}
+                  />
+                </div>
+              ) : null}
             </li>
           );
         })}
       </ul>
-      {connecting ? (
-        <ConnectHubSpot
-          baseId={baseId}
-          onConnected={() => {
-            setConnecting(false);
-            toast.success("HubSpot connected");
-          }}
-          onCancel={() => setConnecting(false)}
-        />
-      ) : null}
     </Dialog>
   );
 }

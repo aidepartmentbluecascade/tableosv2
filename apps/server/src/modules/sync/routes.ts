@@ -60,6 +60,22 @@ export async function sourceNames(db: AppContext["db"], s: Pick<SyncRow, "provid
       tableName: HUBSPOT_OBJECTS[object as HubSpotObject]?.label ?? object,
     };
   }
+  if (s.provider === "airtable") {
+    const cfg = s.source_config ?? {};
+    const baseName = typeof cfg["baseName"] === "string" ? cfg["baseName"] : null;
+    return {
+      baseName: baseName ? `Airtable (${baseName})` : "Airtable",
+      tableName: typeof cfg["tableName"] === "string" ? cfg["tableName"] : "a table",
+    };
+  }
+  if (s.provider === "gmail") {
+    const conn = s.connection_id ? await loadConnection(db, s.connection_id) : null;
+    const query = typeof s.source_config?.["query"] === "string" ? s.source_config["query"].trim() : "";
+    return {
+      baseName: conn?.account_label ? `Gmail (${conn.account_label})` : "Gmail",
+      tableName: query ? `“${query}”` : "All mail",
+    };
+  }
   if (!s.source_table_id) return null;
   const r = await sql<{ base_name: string; table_name: string }>`
     SELECT b.name AS base_name, t.name AS table_name
@@ -71,7 +87,7 @@ export async function sourceNames(db: AppContext["db"], s: Pick<SyncRow, "provid
 }
 
 export async function registerSyncRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
-  const deps = { db: ctx.db, redis: ctx.redis, storage: ctx.storage, secretKey: mfaKey(ctx.env) };
+  const deps = { db: ctx.db, redis: ctx.redis, storage: ctx.storage, secretKey: mfaKey(ctx.env), google: ctx.env };
 
   function wrap<P>(fn: (request: FastifyRequest<{ Params: P }>, reply: FastifyReply) => Promise<void>) {
     return async (request: FastifyRequest<{ Params: P }>, reply: FastifyReply) => {
@@ -262,8 +278,14 @@ export async function registerSyncRoutes(app: FastifyInstance, ctx: AppContext):
     wrap<TableParams>(async (request, reply) => {
       const { sync, user } = await tableSync(request, "base.manage_schema");
       const body = patchBody.parse(request.body ?? {});
-      if (body.twoWay !== undefined && sync.provider === "tableos") {
-        throw new ApiError(422, "VALIDATION_FAILED", "Tables synced from another base are one-way; edit the source base instead");
+      if (body.twoWay === true && sync.provider !== "hubspot") {
+        throw new ApiError(
+          422,
+          "VALIDATION_FAILED",
+          sync.provider === "tableos"
+            ? "Tables synced from another base are one-way; edit the source base instead"
+            : "Only HubSpot tables can sync both ways; edit the records at the source instead",
+        );
       }
       if (body.twoWay === true && !sync.two_way && sync.owner_user_id !== user.id) {
         // Edits are written with the HubSpot account of whoever set up the sync.

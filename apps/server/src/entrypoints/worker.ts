@@ -69,7 +69,7 @@ async function main(): Promise<void> {
     },
   );
 
-  const syncScheduler = startSyncScheduler({ db, redis, secretKey: mfaKey(env) }, log);
+  const syncScheduler = startSyncScheduler({ db, redis, secretKey: mfaKey(env), google: env }, log);
   await eventBus.subscribe(DOMAIN_EVENTS_TOPIC, "table-sync", async (event: DomainEvent) => {
     await syncScheduler.onEvent(event);
   });
