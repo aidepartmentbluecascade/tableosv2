@@ -13,6 +13,12 @@ export function createDb(connectionString: string): TabulaDb {
   pool.on("error", (err) => {
     console.warn(`[db] idle connection error: ${err.message}`);
   });
+  // Same for a connection that drops while checked out; its pending query fails on its own.
+  pool.on("connect", (client) => {
+    client.on("error", (err) => {
+      console.warn(`[db] connection error: ${err.message}`);
+    });
+  });
   return new Kysely<Database>({
     dialect: new PostgresDialect({ pool }),
   });
