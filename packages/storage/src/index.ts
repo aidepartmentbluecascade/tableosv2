@@ -32,7 +32,7 @@ export interface StoredObjectInfo {
   contentType: string | null;
 }
 
-export type StorageDriverName = "gcs" | "local";
+export type StorageDriverName = "gcs" | "local" | "db";
 
 export interface TabulaStorage {
   readonly driver: StorageDriverName;

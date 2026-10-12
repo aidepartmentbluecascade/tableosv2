@@ -22,7 +22,7 @@ import {
   toAttachmentWire,
   type AttachmentRow,
 } from "./service.js";
-import { MAX_UPLOAD_BYTES, resolveAttachmentStorage, verifyDownloadToken } from "./storage.js";
+import { MAX_UPLOAD_BYTES, isProxiedDriver, storageForDriver, verifyDownloadToken } from "./storage.js";
 
 const presignBody = z.object({
   filename: z.string().min(1).max(255),
@@ -42,24 +42,35 @@ export async function sendAttachmentBody(
   row: AttachmentRow,
   download: boolean,
 ): Promise<FastifyReply> {
-  if (row.storage_driver !== "local") {
+  if (!isProxiedDriver(row.storage_driver)) {
     if (!ctx.storage) {
       return reply.code(503).send({ detail: "Storage unavailable" });
     }
     const signed = await ctx.storage.presignDownload(row.object_key);
     return reply.redirect(signed.url, 302);
   }
-  const storage = resolveAttachmentStorage(ctx);
+  const storage = storageForDriver(ctx, row.storage_driver);
   if (!storage) {
     return reply.code(503).send({ detail: "Storage unavailable" });
   }
-  const stream = await storage.openReadStream(row.object_key);
+  let stream;
+  try {
+    stream = await storage.openReadStream(row.object_key);
+  } catch {
+    // Files saved by the old disk driver are gone once the host's disk is reset.
+    return reply
+      .code(404)
+      .type("text/plain; charset=utf-8")
+      .send(`"${row.filename}" is no longer available on the server. Please upload it again.`);
+  }
   const inline = !download && INLINE_MIME.test(row.mime);
   const filename = sanitizeFilename(row.filename).replace(/"/g, "");
+  const pdf = row.mime === "application/pdf";
   return reply
     .header("Content-Type", row.mime || "application/octet-stream")
     .header("X-Content-Type-Options", "nosniff")
-    .header("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox")
+    // Chrome's PDF viewer refuses to run in a sandboxed document.
+    .header("Content-Security-Policy", `default-src 'none'; img-src 'self'; style-src 'unsafe-inline'${pdf ? "" : "; sandbox"}`)
     .header("Cache-Control", "private, max-age=3600")
     .header(
       "Content-Disposition",

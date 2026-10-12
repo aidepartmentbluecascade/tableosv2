@@ -3,17 +3,39 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { createLocalStorage, type TabulaStorage } from "@tabula/storage";
 import type { AppContext } from "../../lib/app-context.js";
+import { createDbStorage } from "./db-storage.js";
 
 /**
- * Attachment storage selection.
+ * Attachment storage selection for new uploads.
  *
  * `TABULA_STORAGE_DRIVER`:
+ *  - `db`     → bodies in Postgres (`data.attachment_blobs`), served by the API. Default.
  *  - `local`  → files under `<repo>/.data/uploads` (or `TABULA_UPLOAD_DIR`), served by the API.
+ *               Not for hosts that wipe the disk on deploy (Render, Heroku…).
  *  - `gcs`    → the GCS bucket configured via GCS_* env (ctx.storage).
  *  - `none`   → uploads disabled (503).
- *  - unset    → `local` in development/test, `gcs` (if configured) in production.
  */
 let cached: { key: string; storage: TabulaStorage | null } | null = null;
+let local: TabulaStorage | null = null;
+let dbStorage: TabulaStorage | null = null;
+
+/** Drivers whose files are uploaded and downloaded through the API (no presigned URLs). */
+export function isProxiedDriver(driver: string): boolean {
+  return driver === "local" || driver === "db";
+}
+
+/** Storage holding an existing attachment (by its row's `storage_driver`). */
+export function storageForDriver(ctx: AppContext, driver: string): TabulaStorage | null {
+  if (driver === "local") {
+    local ??= createLocalStorage(localUploadDir());
+    return local;
+  }
+  if (driver === "db") {
+    dbStorage ??= createDbStorage(ctx.db);
+    return dbStorage;
+  }
+  return ctx.storage;
+}
 
 function findRepoRoot(start: string): string {
   let dir = path.resolve(start);
@@ -42,11 +64,11 @@ export function resolveAttachmentStorage(ctx: AppContext): TabulaStorage | null 
     storage = null;
   } else if (requested === "gcs") {
     storage = ctx.storage;
-  } else if (requested === "local" || ctx.env.NODE_ENV !== "production") {
-    storage = createLocalStorage(localUploadDir());
-    void storage.ensureBucket().catch(() => undefined);
+  } else if (requested === "local") {
+    storage = storageForDriver(ctx, "local");
+    void storage?.ensureBucket().catch(() => undefined);
   } else {
-    storage = ctx.storage;
+    storage = storageForDriver(ctx, "db");
   }
   cached = { key, storage };
   return storage;

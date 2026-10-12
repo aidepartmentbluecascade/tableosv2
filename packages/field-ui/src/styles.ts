@@ -65,6 +65,35 @@ button.tfu-star{cursor:pointer}
 .tfu-attach-img{width:84px;height:64px;border-radius:6px;border:1px solid #dddddd;object-fit:cover;background:#f8fafc;display:flex;align-items:center;justify-content:center;color:#41454d;text-transform:uppercase;font-size:11px}
 .tfu-attach-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tfu-attach-x{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;border:none;background:rgba(15,23,42,.65);color:#fff;cursor:pointer;font-size:12px;line-height:18px;padding:0}
+.tfu-attach-open{padding:0;border:none;background:none;cursor:zoom-in;font:inherit;color:inherit}
+.tfu-thumb-btn{display:inline-flex;padding:0;border:none;background:none;cursor:zoom-in;flex:none}
+.tfu-av{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;background:#16191f;color:#fff;font-family:inherit}
+.tfu-av-bar{display:flex;align-items:center;gap:16px;padding:12px 16px;flex:none}
+.tfu-av-title{display:flex;flex-direction:column;min-width:0;flex:1}
+.tfu-av-name{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tfu-av-meta{font-size:12px;color:rgba(255,255,255,.6)}
+.tfu-av-actions{display:flex;align-items:center;gap:8px;flex:none}
+.tfu-av-btn{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:6px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;font:inherit;font-size:13px;font-weight:500;text-decoration:none;cursor:pointer}
+.tfu-av-btn:hover{background:rgba(255,255,255,.14)}
+.tfu-av-primary{background:#fff;color:#181d26;border-color:#fff}
+.tfu-av-primary:hover{background:#e6e8eb}
+.tfu-av-close{width:30px;justify-content:center;padding:0;font-size:20px;line-height:1}
+.tfu-av-stage{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:8px 72px}
+.tfu-av-img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px;box-shadow:0 10px 40px rgba(0,0,0,.4);background:repeating-conic-gradient(#2a2e36 0 25%,#22262d 0 50%) 0 0/16px 16px}
+.tfu-av-frame{width:min(1000px,100%);height:100%;border:none;border-radius:4px;background:#fff}
+.tfu-av-nopreview{display:flex;flex-direction:column;align-items:center;gap:14px;font-size:14px;color:rgba(255,255,255,.75);text-align:center;max-width:360px}
+.tfu-av-bigext{display:flex;align-items:center;justify-content:center;width:96px;height:120px;border-radius:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);font-size:18px;font-weight:600;color:#fff}
+.tfu-av-nav{position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;border:none;background:rgba(255,255,255,.1);color:#fff;font-size:28px;line-height:1;cursor:pointer}
+.tfu-av-nav:hover:not(:disabled){background:rgba(255,255,255,.2)}
+.tfu-av-nav:disabled{opacity:.3;cursor:default}
+.tfu-av-prev{left:16px}
+.tfu-av-next{right:16px}
+.tfu-av-strip{display:flex;gap:8px;justify-content:center;padding:12px 16px 16px;overflow-x:auto;flex:none}
+.tfu-av-thumb{width:56px;height:56px;flex:none;padding:0;border-radius:6px;border:2px solid transparent;background:rgba(255,255,255,.08);overflow:hidden;cursor:pointer;opacity:.6;display:flex;align-items:center;justify-content:center}
+.tfu-av-thumb.on{border-color:#fff;opacity:1}
+.tfu-av-thumb:hover{opacity:1}
+.tfu-av-thumb img{width:100%;height:100%;object-fit:cover}
+.tfu-av-ext{font-size:11px;font-weight:600;color:#fff}
 `;
 
 let injected = false;

@@ -709,7 +709,7 @@ async function loadAttachments(
     r.rows.map(async (a) => {
       const apiPath = `/v1/bases/${pid("bas", a.base_id)}/attachments/${pid("att", a.id)}`;
       let url = apiPath;
-      if (a.j["storage_driver"] === "local") {
+      if (a.j["storage_driver"] === "local" || a.j["storage_driver"] === "db") {
         url = localAttachmentUrl(a.id, a.filename) ?? `${apiPath}/content`;
       } else if (storage && a.scan_status !== "rejected" && Date.now() > signerDownUntil) {
         try {

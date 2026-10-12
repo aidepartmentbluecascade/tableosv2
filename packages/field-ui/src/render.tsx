@@ -11,6 +11,7 @@ import {
   toNumber,
   userLabel,
 } from "./format.js";
+import { openAttachmentViewer } from "./AttachmentViewer.js";
 import { optionColor } from "./metadata.js";
 import { ensureFieldUiStyles } from "./styles.js";
 import type { AttachmentValue, FieldLike, LinkRef, UserRef } from "./types.js";
@@ -80,14 +81,30 @@ function extOf(a: AttachmentValue): string {
   return m ? m[1]! : (a.mime?.split("/")[1] ?? "file").slice(0, 4);
 }
 
-export function AttachmentThumb({ a }: { a: AttachmentValue }) {
+export function AttachmentThumb({ a, onOpen }: { a: AttachmentValue; onOpen?: (() => void) | undefined }) {
   const isImage = (a.mime ?? "").startsWith("image/") || /\.(png|jpe?g|gif|webp|svg)$/i.test(a.filename);
   const src = a.thumbnailUrl ?? (isImage ? a.url : null);
-  if (src) return <img className="tfu-thumb" src={src} alt={a.filename} title={a.filename} loading="lazy" />;
-  return (
+  const body = src ? (
+    <img className="tfu-thumb" src={src} alt={a.filename} title={a.filename} loading="lazy" />
+  ) : (
     <span className="tfu-file" title={a.filename}>
       {extOf(a)}
     </span>
+  );
+  if (!onOpen) return body;
+  return (
+    <button
+      type="button"
+      className="tfu-thumb-btn"
+      title={a.filename}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+      onDoubleClick={stop}
+    >
+      {body}
+    </button>
   );
 }
 
@@ -212,14 +229,16 @@ export function renderCellValue(
           })}
         </span>
       );
-    case "attachment":
+    case "attachment": {
+      const items = asArray<AttachmentValue>(value);
       return (
         <span className="tfu-pills">
-          {asArray<AttachmentValue>(value).map((a) => (
-            <AttachmentThumb key={a.id} a={a} />
+          {items.map((a, i) => (
+            <AttachmentThumb key={a.id} a={a} onOpen={() => openAttachmentViewer({ items, index: i })} />
           ))}
         </span>
       );
+    }
     case "link":
       return (
         <span className="tfu-pills">

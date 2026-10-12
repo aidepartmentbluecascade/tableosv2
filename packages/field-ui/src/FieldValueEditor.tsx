@@ -18,6 +18,7 @@ import {
   toNumber,
   userLabel,
 } from "./format.js";
+import { openAttachmentViewer } from "./AttachmentViewer.js";
 import { LinkRecordPicker } from "./LinkRecordPicker.js";
 import { isReadOnlyFieldType } from "./metadata.js";
 import { Popover, SearchableList, type MenuItem } from "./Popover.js";
@@ -908,6 +909,7 @@ function AttachmentEditor(props: FieldValueEditorProps): ReactElement {
     if (mode !== "cell") return;
     const onDown = (e: MouseEvent) => {
       if (boxRef.current?.contains(e.target as Node)) return;
+      if ((e.target as Element | null)?.closest?.(".tfu-av")) return;
       onDone?.("blur");
     };
     document.addEventListener("mousedown", onDown, true);
@@ -934,7 +936,8 @@ function AttachmentEditor(props: FieldValueEditorProps): ReactElement {
   };
 
   const remove = (id: string) => {
-    const next = local.filter((a) => a.id !== id);
+    const next = localRef.current.filter((a) => a.id !== id);
+    localRef.current = next;
     setLocal(next);
     onChange(next.length ? next : null);
   };
@@ -952,20 +955,23 @@ function AttachmentEditor(props: FieldValueEditorProps): ReactElement {
       }}
     >
       <div className="tfu-attach-grid">
-        {local.map((a) => {
+        {local.map((a, i) => {
           const isImage = (a.mime ?? "").startsWith("image/");
           const src = a.thumbnailUrl ?? (isImage ? a.url : null);
           return (
             <div key={a.id} className="tfu-attach">
-              {src ? (
-                <a href={a.url ?? "#"} target="_blank" rel="noreferrer">
+              <button
+                type="button"
+                className="tfu-attach-open"
+                title={`Open ${a.filename}`}
+                onClick={() => openAttachmentViewer({ items: localRef.current, index: i, onRemove: remove })}
+              >
+                {src ? (
                   <img className="tfu-attach-img" src={src} alt={a.filename} />
-                </a>
-              ) : (
-                <a className="tfu-attach-img" href={a.url ?? "#"} target="_blank" rel="noreferrer">
-                  {(/\.([a-z0-9]{1,5})$/i.exec(a.filename)?.[1] ?? "file")}
-                </a>
-              )}
+                ) : (
+                  <span className="tfu-attach-img">{(/\.([a-z0-9]{1,5})$/i.exec(a.filename)?.[1] ?? "file")}</span>
+                )}
+              </button>
               <span className="tfu-attach-name" title={a.filename}>
                 {a.filename}
               </span>

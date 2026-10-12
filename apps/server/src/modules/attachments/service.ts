@@ -10,7 +10,7 @@ import type { TabulaDb } from "@tabula/db";
 import { sql } from "kysely";
 import type { AppContext } from "../../lib/app-context.js";
 import { pid } from "../../lib/public-ids.js";
-import { resolveAttachmentStorage, signDownloadToken } from "./storage.js";
+import { isProxiedDriver, resolveAttachmentStorage, signDownloadToken, storageForDriver } from "./storage.js";
 
 /** CONTRACTS §3 attachment cell element. */
 export interface AttachmentWire {
@@ -92,7 +92,7 @@ export async function downloadUrlFor(
   ctx: AppContext,
   row: Pick<AttachmentRow, "id" | "filename" | "object_key" | "storage_driver">,
 ): Promise<string> {
-  if (row.storage_driver === "local") {
+  if (isProxiedDriver(row.storage_driver)) {
     return localDownloadUrl(ctx, row.id, row.filename);
   }
   const storage = ctx.storage;
@@ -264,7 +264,7 @@ export async function createPendingUpload(
   `.execute(ctx.db);
 
   const upload: PresignedUpload =
-    storage.driver === "local"
+    isProxiedDriver(storage.driver)
       ? {
           url: input.apiUploadUrl(attachmentId),
           method: "PUT",
@@ -282,7 +282,7 @@ export async function storeUploadBody(
   body: Buffer,
   maxBytes: number,
 ): Promise<void> {
-  const storage = resolveAttachmentStorage(ctx);
+  const storage = storageForDriver(ctx, row.storage_driver);
   if (!storage) throw new StorageUnavailableError();
   if (row.scan_status !== "pending") {
     throw new UploadRejectedError("Upload already completed");
@@ -302,10 +302,7 @@ export async function finalizeUpload(
   row: AttachmentRow,
   maxBytes: number,
 ): Promise<AttachmentWire> {
-  const storage =
-    row.storage_driver === "local"
-      ? resolveAttachmentStorage(ctx)
-      : ctx.storage;
+  const storage = storageForDriver(ctx, row.storage_driver);
   if (!storage) throw new StorageUnavailableError();
 
   if (row.scan_status === "clean") {
