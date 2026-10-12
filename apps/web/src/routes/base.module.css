@@ -184,6 +184,67 @@
   color: var(--tabula-color-text-muted);
 }
 
+.skel {
+  display: block;
+  flex: none;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--tabula-color-bg-subtle) 0%, var(--tabula-color-border) 50%, var(--tabula-color-bg-subtle) 100%);
+  background-size: 200% 100%;
+  animation: skelShimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skelShimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skel {
+    animation: none;
+  }
+}
+
+.skelSidebar {
+  flex: none;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px;
+  border-right: 1px solid var(--tabula-color-border);
+}
+
+.skelToolbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--tabula-color-border);
+}
+
+.skelGrid {
+  flex: 1;
+  overflow: hidden;
+}
+
+.skelRow {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  height: 32px;
+  padding: 0 16px 0 52px;
+  border-bottom: 1px solid var(--tabula-color-border);
+}
+
+.skelRow:first-child {
+  background: var(--tabula-color-bg-subtle);
+}
+
 .errorState {
   margin: 96px auto;
   max-width: 480px;

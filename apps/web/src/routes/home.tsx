@@ -283,9 +283,20 @@ function BaseCard({
   onDelete: () => void;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  // Start loading the base on hover/focus so it usually opens with its data ready.
+  const prefetch = () =>
+    void queryClient.prefetchQuery({ queryKey: ["bases", base.id], queryFn: () => api.getBase(base.id), staleTime: 30_000 });
   return (
     <div className={styles.baseCard}>
-      <Link to="/bases/$baseId" params={{ baseId: base.id }} className={styles.baseCardLink}>
+      <Link
+        to="/bases/$baseId"
+        params={{ baseId: base.id }}
+        className={styles.baseCardLink}
+        onPointerEnter={prefetch}
+        onFocus={prefetch}
+        onPointerDown={prefetch}
+      >
         <span className={styles.baseIcon} style={{ background: baseColor(base.id) }} aria-hidden>
           {baseInitials(base.name)}
         </span>

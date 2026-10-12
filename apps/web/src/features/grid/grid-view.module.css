@@ -587,6 +587,50 @@
   background: rgba(255, 255, 255, 0.12);
 }
 
+.skelRows {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.skelRow {
+  display: flex;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.skelCell {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+
+.skelBar {
+  display: block;
+  height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--soft) 0%, var(--hairline) 50%, var(--soft) 100%);
+  background-size: 200% 100%;
+  animation: gridSkel 1.4s ease-in-out infinite;
+}
+
+@keyframes gridSkel {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skelBar {
+    animation: none;
+  }
+}
+
 .empty {
   position: absolute;
   left: 0;

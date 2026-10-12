@@ -1599,7 +1599,10 @@ export function GridView(props: GridViewProps) {
                   aria-hidden="true"
                 />
               ) : null}
-              <div className={styles.addRow} style={{ top: offsets.height + pendingHeight, width: totalWidth }}>
+              <div
+                className={styles.addRow}
+                style={{ top: offsets.height + pendingHeight, width: totalWidth, ...(query.isLoading ? { visibility: "hidden" } : {}) }}
+              >
                 <button
                   type="button"
                   className={styles.addRowBtn}
@@ -1623,8 +1626,17 @@ export function GridView(props: GridViewProps) {
                 </div>
               ) : null}
               {query.isLoading ? (
-                <div className={styles.empty} style={{ top: 24 }}>
-                  Loading records…
+                <div className={styles.skelRows} style={{ width: totalWidth }} aria-busy="true" aria-label="Loading records">
+                  {Array.from({ length: 12 }, (_, r) => (
+                    <div key={r} className={styles.skelRow} style={{ height: rowH }}>
+                      <span className={styles.skelCell} style={{ width: ROWNUM_W }} />
+                      {colLayout.slice(0, 8).map((c, i) => (
+                        <span key={c.field.id} className={styles.skelCell} style={{ width: c.w }}>
+                          <span className={styles.skelBar} style={{ width: `${45 + ((r * 23 + i * 37) % 40)}%` }} />
+                        </span>
+                      ))}
+                    </div>
+                  ))}
                 </div>
               ) : null}
               {query.isError ? (
@@ -1637,7 +1649,7 @@ export function GridView(props: GridViewProps) {
             {/* summary bar */}
             <div className={styles.summary} style={{ width: totalWidth }}>
               <div className={`${styles.scell} ${styles.stotal}`} style={{ width: ROWNUM_W + (colLayout[0]?.w ?? 0) }}>
-                {query.isPlaceholderData ? (
+                {query.isPlaceholderData || query.isLoading ? (
                   "Loading…"
                 ) : (
                   <>

@@ -1,7 +1,7 @@
 import { Link, useRouter, useRouterState } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, ApiProblemError, type ViewDto } from "../lib/api.ts";
+import { api, ApiProblemError, type BaseSummary, type ViewDto } from "../lib/api.ts";
 import { hiddenTableIdsOf, shellApi } from "../lib/api-areas/shell.ts";
 import {
   BaseSessionProvider,
@@ -76,6 +76,76 @@ function UndoRedoButtons({ baseId }: { baseId: string }) {
       >
         ↷
       </button>
+    </div>
+  );
+}
+
+/** The base's name from the home page's lists, so the header can show it before the base loads. */
+function cachedBaseName(queryClient: QueryClient, baseId: string): string | null {
+  for (const [, data] of queryClient.getQueriesData<{ bases?: BaseSummary[] }>({ queryKey: ["workspaces"] })) {
+    const hit = data?.bases?.find((b) => b.id === baseId);
+    if (hit) return hit.name;
+  }
+  return null;
+}
+
+/** Placeholder with the base's real layout while it loads for the first time. */
+function BaseSkeleton({ baseId, name }: { baseId: string; name: string | null }) {
+  return (
+    <div className={styles.shell} aria-busy="true" aria-label="Loading base">
+      <header className={styles.topBar}>
+        <div className={styles.brand}>
+          <Link to="/" className={styles.homeLink} title="All bases" aria-label="Home">
+            <span className={styles.logo} aria-hidden>
+              T
+            </span>
+          </Link>
+          <span className={styles.baseIcon} style={{ background: baseColor(baseId) }} aria-hidden />
+          {name ? (
+            <span className={styles.baseTitleBtn}>
+              <span className={styles.baseTitle}>{name}</span>
+            </span>
+          ) : (
+            <span className={styles.skel} style={{ width: 140, height: 18 }} />
+          )}
+        </div>
+        <nav className={styles.navTabs} aria-hidden>
+          {["Data", "Automations", "Interfaces", "Forms"].map((label, i) => (
+            <span key={label} className={styles.navTab} data-active={i === 0} style={{ display: "inline-flex", alignItems: "center" }}>
+              {label}
+            </span>
+          ))}
+        </nav>
+      </header>
+      <div className={styles.tableBar}>
+        {[96, 128, 84].map((w, i) => (
+          <span key={i} className={styles.skel} style={{ width: w, height: 16, alignSelf: "center" }} />
+        ))}
+      </div>
+      <div className={styles.workspace}>
+        <aside className={styles.skelSidebar}>
+          <span className={styles.skel} style={{ width: "100%", height: 30 }} />
+          {[70, 55, 80, 60].map((w, i) => (
+            <span key={i} className={styles.skel} style={{ width: `${w}%`, height: 12 }} />
+          ))}
+        </aside>
+        <div className={styles.content}>
+          <div className={styles.skelToolbar}>
+            {[90, 70, 60, 56, 56].map((w, i) => (
+              <span key={i} className={styles.skel} style={{ width: w, height: 14 }} />
+            ))}
+          </div>
+          <div className={styles.skelGrid}>
+            {Array.from({ length: 10 }, (_, r) => (
+              <div key={r} className={styles.skelRow}>
+                {[160, 180, 140, 120].map((w, c) => (
+                  <span key={c} className={styles.skel} style={{ width: r === 0 ? w * 0.6 : w - ((r * 17 + c * 29) % 60), height: 12 }} />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -257,7 +327,7 @@ export function BasePage({ baseId }: { baseId: string }) {
   }, [baseId, queryClient]);
 
   if (baseQuery.isLoading) {
-    return <p className={styles.empty}>Loading base…</p>;
+    return <BaseSkeleton baseId={baseId} name={cachedBaseName(queryClient, baseId)} />;
   }
 
   if (baseQuery.isError || !baseQuery.data) {
