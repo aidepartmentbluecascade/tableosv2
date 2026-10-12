@@ -1014,6 +1014,61 @@
   border: 1px solid var(--tabula-color-border);
   border-radius: var(--tabula-radius-sm);
 }
+.outputView {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tabula-space-2);
+  margin-top: var(--tabula-space-2);
+}
+.recordCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tabula-space-1);
+  padding: var(--tabula-space-2) var(--tabula-space-3);
+  background: var(--tabula-color-bg);
+  border: 1px solid var(--tabula-color-border);
+  border-radius: var(--tabula-radius-sm);
+}
+.recordHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--tabula-space-2);
+  font-size: 13px;
+}
+.recordId {
+  font-size: 11px;
+  color: var(--tabula-color-text-muted);
+}
+.kv {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+.kvRow {
+  display: grid;
+  grid-template-columns: minmax(90px, 32%) 1fr;
+  gap: var(--tabula-space-2);
+  padding: 4px 0;
+  border-top: 1px solid var(--tabula-color-border);
+  font-size: 13px;
+}
+.kvRow:first-child {
+  border-top: 0;
+}
+.kvKey {
+  margin: 0;
+  color: var(--tabula-color-text-muted);
+  overflow-wrap: anywhere;
+}
+.kvVal {
+  margin: 0;
+  color: var(--tabula-color-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 7.5em;
+  overflow-y: auto;
+}
 
 /* ---------- dialog ---------- */
 .overlay {
