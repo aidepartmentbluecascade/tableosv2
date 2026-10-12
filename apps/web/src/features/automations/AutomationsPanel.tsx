@@ -165,28 +165,44 @@ export function AutomationsPanel({ baseId, initial }: { baseId: string; initial?
 }
 
 function CreateMenu({ disabled, onPick }: { disabled: boolean; onPick: (t: TriggerType) => void }) {
-  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const open = pos !== null;
   const ref = useRef<HTMLDivElement>(null);
+  const setOpen = (next: boolean) => {
+    const btn = ref.current?.querySelector("button");
+    if (!next || !btn) return setPos(null);
+    // The sidebar scrolls (and so clips), so the menu is fixed to the viewport, kept fully on screen.
+    const r = btn.getBoundingClientRect();
+    const width = 300;
+    setPos({ top: r.bottom + 4, left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)) });
+  };
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node)) setPos(null);
     };
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setPos(null);
+    const dismiss = (e: Event) => {
+      if (!(e.target instanceof Node && ref.current?.contains(e.target))) setPos(null);
+    };
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", esc);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("scroll", dismiss, true);
     return () => {
       document.removeEventListener("mousedown", close);
       document.removeEventListener("keydown", esc);
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("scroll", dismiss, true);
     };
   }, [open]);
   return (
     <div className={styles.menuWrap} ref={ref}>
-      <button type="button" className={styles.btnPrimarySm} disabled={disabled} onClick={() => setOpen((o) => !o)}>
+      <button type="button" className={styles.btnPrimarySm} disabled={disabled} onClick={() => setOpen(!open)}>
         + Create
       </button>
-      {open ? (
-        <div className={styles.menu} role="menu">
+      {pos ? (
+        <div className={`${styles.menu} ${styles.menuFixed}`} role="menu" style={{ top: pos.top, left: pos.left }}>
           <div className={styles.menuLabel}>Choose a trigger</div>
           {TRIGGERS.map((t) => (
             <button
