@@ -33,6 +33,11 @@ function asGroup(f: FilterAst | null | undefined): FilterGroup {
   return f as FilterGroup;
 }
 
+/** Values that hold a record ID (`….id` tokens, or fields such as "Record ID"). */
+function isRecordIdToken(t: TokenOption): boolean {
+  return /\.id\}\}$/.test(t.token) || /\bID\b/.test(t.label);
+}
+
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className={styles.field}>
@@ -645,8 +650,8 @@ export function ActionEditor({
       ) : null}
 
       {action.type === "update_record" || action.type === "delete_record" ? (
-        <Field label="Record ID" hint="Usually the trigger record, or a record found in an earlier step.">
-          <TokenInput value={cfg.recordId ?? ""} onChange={(v) => set({ recordId: v })} tokens={tokens} ariaLabel="Record ID" />
+        <Field label="Record ID" hint="Usually the trigger record's ID, or the first record ID from a Find records step.">
+          <TokenInput value={cfg.recordId ?? ""} onChange={(v) => set({ recordId: v })} tokens={tokens} pickerFilter={isRecordIdToken} ariaLabel="Record ID" />
         </Field>
       ) : null}
 

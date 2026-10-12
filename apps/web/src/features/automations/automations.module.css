@@ -595,6 +595,44 @@
   align-items: flex-start;
   width: 100%;
 }
+.tokenEditor {
+  position: relative;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: text;
+  line-height: 22px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.tokenEditorSingle {
+  min-height: 36px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+.tokenEditor[data-empty]::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  color: var(--tabula-color-text-muted);
+  pointer-events: none;
+}
+.tokenChip {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0 2px;
+  padding: 0 7px;
+  border: 1px solid #c4d9ff;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: var(--tabula-color-info);
+  font-size: 12px;
+  line-height: 18px;
+  vertical-align: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+  user-select: none;
+}
 .tokenBtn {
   flex-shrink: 0;
   width: 32px;

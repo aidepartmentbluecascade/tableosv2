@@ -108,7 +108,20 @@ export function scriptOutputKeys(script: string | undefined): string[] {
 }
 
 /** Short human summary of an action for its card. */
+/** `{{steps.x.first.fields.Name}}` → `[Name]` for one-line summaries. */
+export function readableTokens(text: string): string {
+  return text.replace(/\{\{([^{}]+)\}\}/g, (_m, path: string) => {
+    const p = path.trim();
+    const field = /\.fields\.(.+)$/.exec(p)?.[1];
+    return `[${field ?? p.split(".").pop() ?? p}]`;
+  });
+}
+
 export function summarizeAction(a: AutomationAction, tables: TableDto[]): string {
+  return readableTokens(summarize(a, tables));
+}
+
+function summarize(a: AutomationAction, tables: TableDto[]): string {
   const t = tables.find((x) => x.id === a.config.tableId);
   switch (a.type) {
     case "update_record":
