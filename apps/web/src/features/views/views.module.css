@@ -572,6 +572,15 @@ textarea.input {
   padding: 0 10px;
 }
 
+.searchIcon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
 .readOnlyBar {
   padding: 6px 12px;
   background: var(--cream);

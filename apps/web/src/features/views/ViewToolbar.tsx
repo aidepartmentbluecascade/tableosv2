@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DropdownMenu } from "../../app/ui.tsx";
 import type { FieldDto, FilterAst, TableDto, ViewDto } from "../../lib/api.ts";
 import type { RowHeight, SortSpec, ViewConfig } from "../../lib/api-areas/views.ts";
@@ -627,6 +627,23 @@ export function ViewToolbar({
   const showSettings = kind === "kanban" || kind === "calendar" || kind === "gallery" || kind === "timeline" || kind === "gantt";
   const showRecordControls = kind !== "form";
 
+  useEffect(() => {
+    if (!showRecordControls) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "f") return;
+      // Leave Ctrl+F alone inside dialogs (record drawer, settings) so the browser's find still works there.
+      if (e.target instanceof Element && e.target.closest("[role=dialog]")) return;
+      e.preventDefault();
+      setOpen("search");
+      requestAnimationFrame(() => {
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showRecordControls]);
+
   return (
     <div className={styles.toolbarShell}>
       <div className={styles.toolbar} role="toolbar" aria-label="View toolbar">
@@ -862,6 +879,8 @@ export function ViewToolbar({
                 type="button"
                 className={styles.toolBtn}
                 aria-label={search ? "Clear search" : "Search"}
+                aria-keyshortcuts="Control+F Meta+F"
+                title={search ? "Clear search" : `Search (${navigator.platform.startsWith("Mac") ? "⌘" : "Ctrl+"}F)`}
                 onClick={() => {
                   if (search) {
                     onSearchChange("");
@@ -869,7 +888,14 @@ export function ViewToolbar({
                   } else setOpen(open === "search" ? null : "search");
                 }}
               >
-                {search ? "✕" : "⌕"}
+                {search ? (
+                  "✕"
+                ) : (
+                  <svg className={styles.searchIcon} viewBox="0 0 24 24" aria-hidden>
+                    <circle cx="10.5" cy="10.5" r="6.5" />
+                    <path d="M15.5 15.5 21 21" />
+                  </svg>
+                )}
               </button>
             </span>
           ) : null}
