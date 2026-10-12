@@ -55,7 +55,6 @@ const PLAN_SEEDS = [
     code: "free",
     name: "Free",
     limits: {
-      recordsPerBase: 2000,
       tablesPerBase: 50,
       attachmentBytesPerBase: 1_073_741_824,
       automationRunsPerMonth: 200,
@@ -67,7 +66,6 @@ const PLAN_SEEDS = [
     code: "team",
     name: "Team",
     limits: {
-      recordsPerBase: 100_000,
       tablesPerBase: 200,
       attachmentBytesPerBase: 53_687_091_200,
       automationRunsPerMonth: 50_000,

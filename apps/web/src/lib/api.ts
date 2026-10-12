@@ -310,10 +310,10 @@ export const api = {
     return request<BaseDetail>(`/v1/bases/${baseId}`);
   },
 
-  createTable(baseId: string, name: string) {
+  createTable(baseId: string, name: string, opts: { starter?: boolean } = {}) {
     return request<{ table: { id: string; name: string } }>(
       `/v1/bases/${baseId}/tables`,
-      { method: "POST", json: { name } },
+      { method: "POST", json: { name, ...opts } },
     );
   },
 

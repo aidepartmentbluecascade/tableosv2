@@ -364,6 +364,8 @@ class ComputeRun {
     switch (prim.type) {
       case "autonumber":
         return String(row.rowNumber);
+      case "record_id":
+        return pid("rec", row.id);
       case "created_time":
         return row.createdAt;
       case "modified_time":

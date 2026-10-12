@@ -231,7 +231,7 @@ export type ViewRecord = RecordDto & {
 };
 
 export const viewRecordsApi = {
-  async queryAll(baseId: string, tableId: string, body: RecordQueryBody, max = 2000) {
+  async queryAll(baseId: string, tableId: string, body: RecordQueryBody, max = Number.POSITIVE_INFINITY) {
     const out: ViewRecord[] = [];
     let cursor: string | null | undefined = undefined;
     const clean: Record<string, unknown> = { ...body, pageSize: 500 };

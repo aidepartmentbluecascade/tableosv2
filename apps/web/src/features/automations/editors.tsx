@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { request, type FieldDto, type FilterAst, type TableDto } from "../../lib/api.ts";
 import { integrationsApi } from "../../lib/api-areas/integrations.ts";
 import { errorMessage } from "../../app/toast.tsx";
@@ -14,7 +14,7 @@ import type {
 } from "../../lib/api-areas/automations.ts";
 import { FilterGroupEditor } from "../views/FilterBuilder.tsx";
 import type { FilterGroup } from "../views/view-utils.ts";
-import { TokenInput } from "./TokenInput.tsx";
+import { TokenInput, TokenMenu, tokenToScript } from "./TokenInput.tsx";
 import {
   ACTIONS,
   WEEKDAYS,
@@ -810,7 +810,7 @@ export function ActionEditor({
       ) : null}
 
       {action.type === "script" ? (
-        <ScriptEditor value={cfg.script ?? ""} onChange={(script) => set({ script })} tables={tables} />
+        <ScriptEditor value={cfg.script ?? ""} onChange={(script) => set({ script })} tables={tables} tokens={tokens} />
       ) : null}
 
       {action.type === "condition" ? (
@@ -830,7 +830,31 @@ export function ActionEditor({
   );
 }
 
-function ScriptEditor({ value, onChange, tables }: { value: string; onChange: (v: string) => void; tables: TableDto[] }) {
+function ScriptEditor({
+  value,
+  onChange,
+  tables,
+  tokens,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  tables: TableDto[];
+  tokens: TokenOption[];
+}) {
+  const [picking, setPicking] = useState(false);
+  const areaRef = useRef<HTMLTextAreaElement>(null);
+  const insertValue = (token: string) => {
+    setPicking(false);
+    const el = areaRef.current;
+    const s = el?.selectionStart ?? value.length;
+    const end = el?.selectionEnd ?? value.length;
+    const js = tokenToScript(token);
+    onChange(`${value.slice(0, s)}${js}${value.slice(end)}`);
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(s + js.length, s + js.length);
+    });
+  };
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== "Tab" || e.shiftKey) return;
     e.preventDefault();
@@ -841,8 +865,16 @@ function ScriptEditor({ value, onChange, tables }: { value: string; onChange: (v
   };
   return (
     <>
+      <div className={`${styles.tokenWrap} ${styles.scriptBar}`}>
+        <span className={styles.muted}>Use values from the trigger or earlier steps:</span>
+        <button type="button" className={styles.linkBtn} onClick={() => setPicking((p) => !p)}>
+          + Insert value
+        </button>
+        {picking ? <TokenMenu tokens={tokens} onPick={insertValue} onClose={() => setPicking(false)} /> : null}
+      </div>
       <Field label="Script (JavaScript)" hint="Runs in a secure sandbox as the automation's owner. Use Test to see console output in the run history.">
         <textarea
+          ref={areaRef}
           className={`${styles.textarea} ${styles.scriptInput}`}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -856,6 +888,10 @@ function ScriptEditor({ value, onChange, tables }: { value: string; onChange: (v
         <summary>Script reference</summary>
         <ul>
           <li><code>input.config()</code>: <code>trigger</code> (with <code>trigger.record.fields</code> as text and <code>trigger.record.raw</code> as values), <code>steps</code>, <code>base</code>, <code>now</code>.</li>
+          <li>
+            <code>{"{{…}}"}</code> tokens aren't replaced inside code. Use <b>+ Insert value</b>: <code>{"{{trigger.record.fields.Email}}"}</code> becomes{" "}
+            <code>{'input.config().trigger.record.fields["Email"]'}</code>.
+          </li>
           <li><code>output.set(key, value)</code>: later steps can use <code>{"{{steps.<this step>.<key>}}"}</code>.</li>
           <li><code>await base.findRecords(table, {"{ view, limit, filter }"})</code> returns up to 500 records.</li>
           <li><code>await base.getRecord(table, id)</code>, <code>createRecord(table, fields)</code>, <code>updateRecord(table, id, fields)</code>, <code>deleteRecord(table, id)</code>.</li>

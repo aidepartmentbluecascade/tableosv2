@@ -64,7 +64,7 @@ export class LimitsService {
     return {
       planCode: plan?.code ?? "free",
       planName: plan?.name ?? "Free",
-      limits: plan?.limits ?? { recordsPerBase: 2000 },
+      limits: plan?.limits ?? {},
     };
   }
 

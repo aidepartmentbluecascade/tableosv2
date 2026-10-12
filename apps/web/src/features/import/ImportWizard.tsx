@@ -177,15 +177,15 @@ export function ImportWizard({
       let fields = destTable?.fields ?? [];
       const effective = mapping.map((m) => ({ ...m }));
       if (dest === "new") {
-        const created = await api.createTable(baseId, newTableName.trim());
+        const created = await api.createTable(baseId, newTableName.trim(), { starter: false });
         targetTableId = created.table.id;
         const fresh = await api.getBase(baseId);
         const t = fresh.tables.find((x) => x.id === targetTableId);
         fields = t?.fields ?? [];
-        // Use the default primary field for the first mapped column; drop other defaults' names.
+        // A Record ID primary stays; every column becomes its own field. Otherwise the first column fills the primary.
         const primary = t?.fields.find((f) => f.id === t.primaryFieldId) ?? t?.fields[0];
         const firstNew = effective.findIndex((m) => m.target === NEW_FIELD);
-        if (primary && firstNew >= 0) {
+        if (primary && primary.type !== "record_id" && firstNew >= 0) {
           const m = effective[firstNew]!;
           const primaryType = ["text", "long_text", "email", "url", "phone", "number", "date"].includes(m.newType)
             ? m.newType

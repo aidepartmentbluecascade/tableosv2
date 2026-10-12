@@ -504,6 +504,17 @@
   white-space: pre;
   min-height: 280px;
 }
+.scriptBar {
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+}
+.scriptBar .linkBtn {
+  white-space: nowrap;
+}
+.scriptBar .tokenMenu {
+  top: 28px;
+}
 .scriptRef {
   font-size: 12.5px;
   color: var(--tabula-color-text);

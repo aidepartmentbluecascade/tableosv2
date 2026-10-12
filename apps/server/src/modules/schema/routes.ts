@@ -29,6 +29,8 @@ import { loadFieldRow, loadTableFieldRows, loadTableRow, type Db } from "./table
 const tableBody = z.object({
   name: z.string().trim().min(1).max(200),
   description: z.string().max(20_000).optional(),
+  /** false = only the Record ID field and no blank records (imports). */
+  starter: z.boolean().optional(),
 });
 
 const tablePatchBody = z.object({
@@ -214,6 +216,9 @@ export async function registerSchemaRoutes(
           baseId: s.baseId,
           userId: s.user.id,
           tableName: body.name,
+          ...(body.starter === false
+            ? { emptyRecords: 0, fields: [{ name: "Record ID", type: "record_id", config: {} }] }
+            : {}),
         });
         createdTableId = boot.tableId;
         if (body.description) {

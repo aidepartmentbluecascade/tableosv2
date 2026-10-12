@@ -92,19 +92,11 @@ test("signup + new base gets an Airtable-like default table", async () => {
   assert.deepEqual(
     t.fields.map((f: any) => [f.name, f.type]),
     [
-      ["Name", "text"],
+      ["Record ID", "record_id"],
       ["Notes", "long_text"],
-      ["Assignee", "collaborator"],
-      ["Status", "single_select"],
       ["Attachments", "attachment"],
     ],
   );
-  const status = t.fields.find((f: any) => f.name === "Status");
-  assert.deepEqual(status.config.options.map((o: any) => o.label), ["Todo", "In progress", "Done"]);
-  for (const o of status.config.options) {
-    assert.match(o.id, /^opt_/);
-    assert.ok(o.color);
-  }
   assert.equal(t.fields[0].isPrimary, true);
   for (const f of t.fields) {
     assert.match(f.id, /^fld_/);

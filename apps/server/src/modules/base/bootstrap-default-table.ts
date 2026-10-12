@@ -6,23 +6,16 @@ type DbTrx = Transaction<Database>;
 
 export interface BootstrappedTable {
   tableId: string;
-  /** Primary field ("Name"). */
+  /** Primary field ("Record ID" by default). */
   fieldId: string;
   fieldIds: string[];
   viewId: string;
   recordIds: string[];
 }
 
-const opt = (label: string, color: string) => ({
-  id: encodePublicId({ prefix: "opt", uuid: generateUuidV7() }),
-  label,
-  color,
-});
-
 /**
- * Creates an Airtable-style starter table: Name (primary), Notes, Assignee,
- * Status (Todo / In progress / Done), Attachments, Record ID, a default grid view and
- * three empty records. Keeps `tables.record_count` / `base_runtime.record_count`
+ * Creates a starter table: Record ID (primary), Notes, Attachments, a default
+ * grid view and three empty records. Keeps `tables.record_count` / `base_runtime.record_count`
  * in sync.
  */
 export async function bootstrapDefaultTable(
@@ -58,16 +51,9 @@ export async function bootstrapDefaultTable(
   }
 
   const fields: Array<{ name: string; type: string; config: Record<string, unknown> }> = params.fields ?? [
-    { name: "Name", type: "text", config: {} },
-    { name: "Notes", type: "long_text", config: { richText: false } },
-    { name: "Assignee", type: "collaborator", config: { allowMultiple: false, notify: true } },
-    {
-      name: "Status",
-      type: "single_select",
-      config: { options: [opt("Todo", "red"), opt("In progress", "yellow"), opt("Done", "green")] },
-    },
-    { name: "Attachments", type: "attachment", config: {} },
     { name: "Record ID", type: "record_id", config: {} },
+    { name: "Notes", type: "long_text", config: { richText: false } },
+    { name: "Attachments", type: "attachment", config: {} },
   ];
   const fieldIds = fields.map(() => generateUuidV7());
   const fieldKeys = keysBetween(null, null, fields.length);
@@ -99,8 +85,9 @@ export async function bootstrapDefaultTable(
     WHERE id = ${tableId}
   `.execute(trx);
 
+  // The primary field (index 0) can't be hidden.
   const recordIdFieldIds = fields
-    .flatMap((f, i) => (f.type === "record_id" ? [encodePublicId({ prefix: "fld", uuid: fieldIds[i]! })] : []));
+    .flatMap((f, i) => (i > 0 && f.type === "record_id" ? [encodePublicId({ prefix: "fld", uuid: fieldIds[i]! })] : []));
 
   const lastView = await sql<{ order_key: string }>`
     SELECT order_key FROM data.views WHERE base_id = ${params.baseId} ORDER BY order_key DESC LIMIT 1

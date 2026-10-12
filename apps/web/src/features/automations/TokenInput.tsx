@@ -81,7 +81,6 @@ export function TokenInput({
   ariaLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
   const editorRef = useRef<HTMLDivElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const range = useRef<Range | null>(null);
@@ -109,35 +108,6 @@ export function TokenInput({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [labelsKey]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const groups = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const m = new Map<string, TokenOption[]>();
-    for (const t of tokens) {
-      if (pickerFilter && !pickerFilter(t)) continue;
-      if (q && !`${t.group} ${t.label}`.toLowerCase().includes(q)) continue;
-      const list = m.get(t.group) ?? [];
-      list.push(t);
-      m.set(t.group, list);
-    }
-    return [...m.entries()];
-  }, [tokens, query, pickerFilter]);
 
   const emit = () => {
     const el = editorRef.current;
@@ -191,7 +161,6 @@ export function TokenInput({
     range.current = r.cloneRange();
     emit();
     setOpen(false);
-    setQuery("");
   };
 
   const chipify = (el: HTMLElement) => {
@@ -263,22 +232,81 @@ export function TokenInput({
       >
         +
       </button>
-      {open ? (
-        <div className={styles.tokenMenu} role="listbox">
-          <input autoFocus className={styles.input} placeholder="Find a value" value={query} onChange={(e) => setQuery(e.target.value)} />
-          {groups.length === 0 ? <p className={styles.muted}>No matching values</p> : null}
-          {groups.map(([group, items]) => (
-            <div key={group} className={styles.tokenGroup}>
-              <div className={styles.tokenGroupLabel}>{group}</div>
-              {items.map((t) => (
-                <button key={t.token + t.label} type="button" role="option" onClick={() => insertToken(t.token)}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
+      {open ? <TokenMenu tokens={tokens} pickerFilter={pickerFilter} onPick={insertToken} onClose={() => setOpen(false)} /> : null}
+    </div>
+  );
+}
+
+/** Searchable, grouped list of values from the trigger and earlier steps. Place it inside a `tokenWrap`. */
+export function TokenMenu({
+  tokens,
+  pickerFilter,
+  onPick,
+  onClose,
+}: {
+  tokens: TokenOption[];
+  pickerFilter?: ((t: TokenOption) => boolean) | undefined;
+  onPick: (token: string) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      const wrap = menuRef.current?.parentElement;
+      if (wrap && !wrap.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const m = new Map<string, TokenOption[]>();
+    for (const t of tokens) {
+      if (pickerFilter && !pickerFilter(t)) continue;
+      if (q && !`${t.group} ${t.label}`.toLowerCase().includes(q)) continue;
+      const list = m.get(t.group) ?? [];
+      list.push(t);
+      m.set(t.group, list);
+    }
+    return [...m.entries()];
+  }, [tokens, query, pickerFilter]);
+
+  return (
+    <div className={styles.tokenMenu} role="listbox" ref={menuRef}>
+      <input autoFocus className={styles.input} placeholder="Find a value" value={query} onChange={(e) => setQuery(e.target.value)} />
+      {groups.length === 0 ? <p className={styles.muted}>No matching values</p> : null}
+      {groups.map(([group, items]) => (
+        <div key={group} className={styles.tokenGroup}>
+          <div className={styles.tokenGroupLabel}>{group}</div>
+          {items.map((t) => (
+            <button key={t.token + t.label} type="button" role="option" onClick={() => onPick(t.token)}>
+              {t.label}
+            </button>
           ))}
         </div>
-      ) : null}
+      ))}
     </div>
+  );
+}
+
+/** `{{trigger.record.fields.First name}}` → `input.config().trigger.record.fields["First name"]`. */
+export function tokenToScript(token: string): string {
+  const path = token.replace(/^\{\{\s*/, "").replace(/\s*\}\}$/, "");
+  const at = path.indexOf(".fields.");
+  const parts = (at >= 0 ? path.slice(0, at + 7) : path).split(".").filter(Boolean);
+  if (at >= 0) parts.push(path.slice(at + 8));
+  return parts.reduce(
+    (js, p) => (/^\d+$/.test(p) ? `${js}[${p}]` : /^[A-Za-z_$][\w$]*$/.test(p) ? `${js}.${p}` : `${js}[${JSON.stringify(p)}]`),
+    "input.config()",
   );
 }
