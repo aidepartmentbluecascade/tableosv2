@@ -12,6 +12,7 @@ import { writeAuditEvent } from "../audit/write.js";
 import { mfaKey } from "../auth/mfa-pending.js";
 import { bootstrapDefaultTable } from "../base/bootstrap-default-table.js";
 import { loadSync, runTableSync, SyncBusyError } from "../sync/engine.js";
+import { startTwoWayPusher } from "../sync/two-way.js";
 import { connectionDto, loadConnection, openCredentials, sealCredentials, type ConnectionRow } from "./connections.js";
 import {
   HUBSPOT_OBJECT_KEYS,
@@ -36,6 +37,7 @@ const hubspotSyncBody = z.object({
   properties: z.array(z.string().min(1).max(200)).min(1).max(MAX_HUBSPOT_PROPERTIES),
   name: z.string().trim().min(1).max(255).optional(),
   intervalMinutes: z.number().int().min(5).max(1440).optional(),
+  twoWay: z.boolean().optional(),
 });
 
 type BaseParams = { baseId: string };
@@ -44,6 +46,7 @@ type ConnParams = { baseId: string; connectionId: string };
 export async function registerIntegrationRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   const key = mfaKey(ctx.env);
   const deps = { db: ctx.db, redis: ctx.redis, storage: ctx.storage, secretKey: key };
+  startTwoWayPusher(deps, app.log);
 
   function wrap<R extends RouteGenericInterface>(fn: (request: FastifyRequest<R>, reply: FastifyReply) => Promise<void>) {
     return async (request: FastifyRequest<R>, reply: FastifyReply) => {
@@ -216,9 +219,9 @@ export async function registerIntegrationRoutes(app: FastifyInstance, ctx: AppCo
           });
           tableId = boot.tableId;
           await sql`
-            INSERT INTO data.table_syncs (workspace_id, base_id, table_id, provider, connection_id, source_config, owner_user_id, field_map, interval_minutes)
+            INSERT INTO data.table_syncs (workspace_id, base_id, table_id, provider, connection_id, source_config, owner_user_id, field_map, interval_minutes, two_way)
             VALUES (${s.workspaceId}, ${s.baseId}, ${tableId}, 'hubspot', ${conn.id}, ${JSON.stringify(sourceConfig)}::jsonb, ${s.user.id},
-                    ${JSON.stringify({ [primary.id]: boot.fieldId })}::jsonb, ${body.intervalMinutes ?? 15})
+                    ${JSON.stringify({ [primary.id]: boot.fieldId })}::jsonb, ${body.intervalMinutes ?? 15}, ${body.twoWay ?? false})
           `.execute(trx);
           return {
             kind: "schema" as const,

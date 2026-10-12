@@ -2,8 +2,9 @@ import type { TabulaDb } from "@tabula/db";
 import { sql } from "kysely";
 import { ApiError } from "../../http/errors.js";
 import { idFromAny } from "../schema/field-dto.js";
+import { editableSyncedFieldIds } from "./engine.js";
 
-const READ_ONLY = "This table is synced from another source, so its synced data is read-only here. Change it at the source.";
+const READ_ONLY = "This field is synced from another source and is read-only here. Change it at the source.";
 
 function fieldKeys(body: unknown): string[] {
   const b = (body ?? {}) as { fields?: Record<string, unknown>; records?: Array<{ fields?: Record<string, unknown> }> };
@@ -22,11 +23,16 @@ export async function assertSyncWritable(
   action: "record.create" | "record.update" | "record.delete",
   body: unknown,
 ): Promise<void> {
-  const r = await sql<{ field_map: Record<string, string> }>`SELECT field_map FROM data.table_syncs WHERE table_id = ${tableId}`.execute(db);
+  const r = await sql<{ field_map: Record<string, string>; two_way: boolean; writable_keys: string[] }>`
+    SELECT field_map, two_way, writable_keys FROM data.table_syncs WHERE table_id = ${tableId}
+  `.execute(db);
   const sync = r.rows[0];
   if (!sync) return;
-  if (action !== "record.update") throw new ApiError(403, "FORBIDDEN", READ_ONLY);
-  const synced = new Set(Object.values(sync.field_map ?? {}));
+  if (action !== "record.update") {
+    throw new ApiError(403, "FORBIDDEN", "Records in a synced table come from its source, so they can't be added or deleted here.");
+  }
+  const editable = editableSyncedFieldIds(sync);
+  const synced = new Set(Object.values(sync.field_map ?? {}).filter((f) => !editable.has(f)));
   const keys = fieldKeys(body);
   if (keys.length === 0) return;
   const names = await sql<{ id: string; name: string }>`

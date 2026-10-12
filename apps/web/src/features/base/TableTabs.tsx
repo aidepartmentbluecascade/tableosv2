@@ -145,7 +145,7 @@ function AddTableDialog({
   const [name, setName] = useState(defaultName);
   const [mode, setMode] = useState<AddMode>(initialMode);
   const [sourceId, setSourceId] = useState("");
-  const [hubspot, setHubspot] = useState<HubSpotSelection>({ connectionId: "", object: "contacts", properties: [] });
+  const [hubspot, setHubspot] = useState<HubSpotSelection>({ connectionId: "", object: "contacts", properties: [], twoWay: false });
   const nameTouched = useRef(false);
   useEffect(() => {
     if (mode !== "hubspot" || nameTouched.current) return;

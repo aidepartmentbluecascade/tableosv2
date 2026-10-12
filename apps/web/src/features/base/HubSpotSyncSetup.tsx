@@ -9,6 +9,7 @@ export interface HubSpotSelection {
   connectionId: string;
   object: HubSpotObject;
   properties: string[];
+  twoWay: boolean;
 }
 
 function ConnectHubSpot({ baseId, onConnected, onCancel }: { baseId: string; onConnected: (id: string) => void; onCancel?: () => void }) {
@@ -33,7 +34,8 @@ function ConnectHubSpot({ baseId, onConnected, onCancel }: { baseId: string; onC
         <li>
           Under <em>Scopes</em>, add read access for what you want to sync: <code>crm.objects.contacts.read</code>,{" "}
           <code>crm.objects.companies.read</code>, <code>crm.objects.deals.read</code>, <code>tickets</code>. Add{" "}
-          <code>crm.objects.owners.read</code> to see owner names.
+          <code>crm.objects.owners.read</code> to see owner names. For two-way sync also add the matching write scopes (
+          <code>crm.objects.contacts.write</code>, <code>crm.objects.companies.write</code>, <code>crm.objects.deals.write</code>).
         </li>
         <li>Create the app and paste its access token here.</li>
       </ol>
@@ -233,9 +235,16 @@ export function HubSpotSyncSetup({
           </div>
         ) : null}
         <span className={uiStyles.muted}>
-          Also adds Name, HubSpot ID and a link back to each record. The table refreshes every 15 minutes and is read-only; columns you add stay editable.
+          Also adds Name, HubSpot ID and a link back to each record. Changes made in HubSpot show up within a couple of minutes; columns you add stay editable.
         </span>
       </div>
+      <label className={styles.hsProp}>
+        <input type="checkbox" checked={value.twoWay} onChange={(e) => onChange({ ...value, twoWay: e.target.checked })} />
+        <span>
+          <strong>Two-way sync</strong> — edits to synced fields here are written back to HubSpot. Needs write scopes; records are still added and
+          deleted in HubSpot.
+        </span>
+      </label>
     </div>
   );
 }

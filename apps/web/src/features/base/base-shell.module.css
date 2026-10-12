@@ -692,3 +692,14 @@
 .syncBtn:disabled {
   opacity: 0.6;
 }
+.syncToggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.syncToggle + .syncBtn {
+  margin-left: 0;
+}

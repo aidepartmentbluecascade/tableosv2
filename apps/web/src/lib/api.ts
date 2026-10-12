@@ -192,6 +192,9 @@ export interface TableSyncInfo {
   lastError: string | null;
   recordCount: number | null;
   syncedFieldIds: string[];
+  /** Edits to editable synced fields are written back to the source. */
+  twoWay: boolean;
+  editableFieldIds: string[];
 }
 
 export interface ViewDto {

@@ -349,8 +349,15 @@ export const HELP_TOPICS: HelpTopic[] = [
           <li>Pick the object and the properties to bring in. TableOS also adds the record’s name, HubSpot ID and a link back to HubSpot.</li>
         </ol>
         <p>
-          The table refreshes every 15 minutes (use <b>Sync now</b> any time). Dropdown properties become select fields, numbers, dates and checkboxes
-          keep their types, and records deleted in HubSpot are removed here. Changes go one way: edit the data in HubSpot.
+          Changes made in HubSpot show up within a couple of minutes, and a full refresh runs every 15 minutes (use <b>Sync now</b> any time).
+          Dropdown properties become select fields, numbers, dates and checkboxes keep their types, and records deleted in HubSpot are removed here.
+        </p>
+        <p>
+          <b>Two-way sync.</b> Tick <b>Two-way sync</b> when setting up the table, or the <b>Two-way</b> box on the bar above it. Edits to synced fields
+          are then written back to HubSpot within a second or two. The private app needs write scopes such as <code>crm.objects.contacts.write</code>.
+          Calculated and read-only HubSpot properties (create date, last modified, the HubSpot ID) stay read-only, and records are still added or
+          deleted in HubSpot. If HubSpot rejects a value (for example an unknown dropdown option), the bar shows why and HubSpot’s value comes back on
+          the next sync. Only the person who set up the sync can turn two-way on, since edits are written with their HubSpot account.
         </p>
       </>
     ),

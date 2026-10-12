@@ -33,6 +33,14 @@ export function SyncBar({ baseId, table }: { baseId: string; table: TableDto }) 
     },
     onError: (err) => toast.error(err, "Could not sync"),
   });
+  const toggleTwoWay = useMutation({
+    mutationFn: (twoWay: boolean) => syncApi.update(baseId, table.id, { twoWay }),
+    onSuccess: async (res) => {
+      await qc.invalidateQueries({ queryKey: ["bases", baseId] });
+      toast.success(res.sync.twoWay ? "Two-way sync on: edits here update HubSpot" : "Two-way sync off");
+    },
+    onError: (err) => toast.error(err, "Could not change two-way sync"),
+  });
   const s = table.sync;
   const firstRun = Boolean(s && !s.lastSyncedAt);
   useEffect(() => {
@@ -47,9 +55,10 @@ export function SyncBar({ baseId, table }: { baseId: string; table: TableDto }) 
   if (!s) return null;
   return (
     <div className={styles.syncBar} data-state={s.status} role="status">
-      <span aria-hidden>⇄</span>
+      <span aria-hidden>{s.twoWay ? "⇄" : "→"}</span>
       <span>
-        Synced from <strong>{s.sourceBaseName ?? "another base"}</strong> › <strong>{s.sourceTableName ?? "a table"}</strong>
+        {s.twoWay ? "Two-way sync with" : "Synced from"} <strong>{s.sourceBaseName ?? "another base"}</strong> ›{" "}
+        <strong>{s.sourceTableName ?? "a table"}</strong>
         {" · "}
         {s.status === "paused"
           ? "paused"
@@ -58,8 +67,28 @@ export function SyncBar({ baseId, table }: { baseId: string; table: TableDto }) 
             : firstRun
               ? "first sync in progress…"
               : `updated ${ago(s.lastSyncedAt, now)}`}
-        {" · "}synced fields are read-only here; fields you add stay editable.
+        {s.status !== "error" && s.lastError ? (
+          <>
+            {" · "}
+            <span className={styles.syncErr}>{s.lastError}</span>
+          </>
+        ) : null}
+        {" · "}
+        {s.twoWay
+          ? `edits to ${s.editableFieldIds.length} synced field${s.editableFieldIds.length === 1 ? "" : "s"} are written back to the source.`
+          : "synced fields are read-only here; fields you add stay editable."}
       </span>
+      {s.provider === "hubspot" ? (
+        <label className={styles.syncToggle} title="Write edits to synced fields back to HubSpot">
+          <input
+            type="checkbox"
+            checked={s.twoWay}
+            disabled={toggleTwoWay.isPending}
+            onChange={(e) => toggleTwoWay.mutate(e.target.checked)}
+          />
+          Two-way
+        </label>
+      ) : null}
       <button type="button" className={styles.syncBtn} onClick={() => run.mutate()} disabled={run.isPending}>
         {run.isPending ? "Syncing…" : "Sync now"}
       </button>

@@ -13,7 +13,7 @@ import { bootstrapDefaultTable } from "../base/bootstrap-default-table.js";
 import { mfaKey } from "../auth/mfa-pending.js";
 import { loadConnection } from "../integrations/connections.js";
 import { HUBSPOT_OBJECTS, type HubSpotObject } from "../integrations/hubspot.js";
-import { loadSync, mapSourceField, runTableSync, sourceFieldsInOrder, type SyncRow } from "./engine.js";
+import { editableSyncedFieldIds, loadSync, mapSourceField, runTableSync, sourceFieldsInOrder, type SyncRow } from "./engine.js";
 
 const createBody = z.object({
   sourceTableId: z.string(),
@@ -23,6 +23,8 @@ const createBody = z.object({
 const patchBody = z.object({
   status: z.enum(["active", "paused"]).optional(),
   intervalMinutes: z.number().int().min(1).max(1440).optional(),
+  /** Write edits back to the source (HubSpot syncs only). */
+  twoWay: z.boolean().optional(),
 });
 
 type BaseParams = { baseId: string };
@@ -42,6 +44,9 @@ export function syncDto(s: SyncRow, names: { baseName: string; tableName: string
     lastError: s.last_error,
     recordCount: s.last_record_count,
     syncedFieldIds: Object.values(s.field_map ?? {}).map((f) => pid("fld", f)),
+    twoWay: s.two_way,
+    /** Synced fields that can be edited here and are written back to the source. */
+    editableFieldIds: [...editableSyncedFieldIds(s)].map((f) => pid("fld", f)),
   };
 }
 
@@ -242,7 +247,7 @@ export async function registerSyncRoutes(app: FastifyInstance, ctx: AppContext):
       const { sync } = await tableSync(request, "record.update");
       let result = null;
       try {
-        result = await runTableSync(deps, sync.id);
+        result = await runTableSync(deps, sync.id, { full: true });
       } catch {
         // Stored on the sync row; returned below.
       }
@@ -254,12 +259,20 @@ export async function registerSyncRoutes(app: FastifyInstance, ctx: AppContext):
   app.patch<{ Params: TableParams }>(
     "/v1/bases/:baseId/tables/:tableId/sync",
     wrap<TableParams>(async (request, reply) => {
-      const { sync } = await tableSync(request, "base.manage_schema");
+      const { sync, user } = await tableSync(request, "base.manage_schema");
       const body = patchBody.parse(request.body ?? {});
+      if (body.twoWay !== undefined && sync.provider === "tableos") {
+        throw new ApiError(422, "VALIDATION_FAILED", "Tables synced from another base are one-way; edit the source base instead");
+      }
+      if (body.twoWay === true && !sync.two_way && sync.owner_user_id !== user.id) {
+        // Edits are written with the HubSpot account of whoever set up the sync.
+        throw new ApiError(403, "FORBIDDEN", "Only the person who set up this sync can turn on two-way sync");
+      }
       await sql`
         UPDATE data.table_syncs
         SET status = coalesce(${body.status ?? null}, status),
             interval_minutes = coalesce(${body.intervalMinutes ?? null}, interval_minutes),
+            two_way = coalesce(${body.twoWay ?? null}::boolean, two_way),
             updated_at = now()
         WHERE id = ${sync.id}
       `.execute(ctx.db);

@@ -25,6 +25,7 @@ import { writeRecordLinksInTx } from "../links/record-links.js";
 import { deleteSidecars, shouldMaintainSidecar, upsertSidecars } from "../recordstore/sidecars.js";
 import type { SidecarFieldRow, SidecarTableMeta } from "../recordstore/sidecars.js";
 import { loadTableSchema, type FieldRowFull, type TableSchema } from "../schema/table-schema.js";
+import { noteSyncEdits } from "../sync/two-way.js";
 
 type DbTrx = Transaction<Database>;
 
@@ -524,6 +525,7 @@ export async function updateRecordsInTx(
   const after = new Map<string, Record<string, unknown>>();
   const effects: LinkEffects = { changes: [], diffs: [] };
   const changedByField = new Map<string, string[]>();
+  const edits = new Map<string, string[]>();
 
   for (let i = 0; i < ids.length; i++) {
     const id = ids[i]!;
@@ -531,6 +533,14 @@ export async function updateRecordsInTx(
     const p = prepared[i]!;
     const oldCells = (row.cells ?? {}) as Record<string, unknown>;
     const merged = writer.stripLinkSlots(applyCells(oldCells, p.cells));
+    if (ctx.via === "system" && p.links.size === 0 && stableJson(merged) === stableJson(oldCells)) {
+      // Sync re-delivering values the record already has.
+      versions.set(id, Number(row.version));
+      before.set(id, oldCells);
+      after.set(id, merged);
+      continue;
+    }
+    if (ctx.via !== "system") edits.set(id, [...p.fieldIds]);
     const newVersion = Number(row.version) + 1;
     await sql`
       UPDATE data.records
@@ -560,7 +570,21 @@ export async function updateRecordsInTx(
   const meta = writer.modifiedMetaFieldIds;
   if (meta.length) changes.push({ tableId, recordIds: ids, fieldIds: meta });
   const compute = await runCompute(ctx, changes, []);
+  await noteSyncEdits(trx, tableId, edits, ctx.afterCommit);
   return { versions, before, after, compute, configChangedFieldIds, linkDiffs: effects.diffs ?? [] };
+}
+
+function stableJson(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(",")}]`;
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .filter((k) => o[k] !== undefined && o[k] !== null)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(v ?? null);
 }
 
 // ---------------------------------------------------------------------------

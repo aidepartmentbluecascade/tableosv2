@@ -38,4 +38,8 @@ export interface SourceRow {
 export interface SyncSource {
   fields: SourceField[];
   rows(): AsyncIterable<SourceRow[]>;
+  /** SourceField ids whose edits can be written back (two-way syncs). */
+  writable?: string[];
+  /** Rows are only the changed ones: missing rows aren't deletions. */
+  partial?: boolean;
 }

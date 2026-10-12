@@ -21,7 +21,7 @@ export const syncApi = {
   runNow(baseId: string, tableId: string) {
     return request<{ sync: TableSyncInfo }>(`${b(baseId)}/tables/${encodeURIComponent(tableId)}/sync/run`, { method: "POST", json: {} });
   },
-  update(baseId: string, tableId: string, body: { status?: "active" | "paused"; intervalMinutes?: number }) {
+  update(baseId: string, tableId: string, body: { status?: "active" | "paused"; intervalMinutes?: number; twoWay?: boolean }) {
     return request<{ sync: TableSyncInfo }>(`${b(baseId)}/tables/${encodeURIComponent(tableId)}/sync`, { method: "PATCH", json: body });
   },
   stop(baseId: string, tableId: string) {

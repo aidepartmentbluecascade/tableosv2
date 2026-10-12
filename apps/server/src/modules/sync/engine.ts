@@ -11,7 +11,8 @@ import { createFieldInTx, dedupeName, deleteFieldInTx, setPrimaryFieldInTx, upda
 import { createRecordsInTx, deleteRecordsInTx, MAX_BATCH, updateRecordsInTx, type WriteContext } from "../records/write.js";
 import { loadSerializeFields, serializeRecordsByIds, type SerializeFieldRow } from "../records/serialize.js";
 import { loadConnection, openCredentials } from "../integrations/connections.js";
-import { hubspotSource, parseHubSpotConfig } from "../integrations/hubspot.js";
+import { hubspotSource, parseHubSpotConfig, SearchTooLarge } from "../integrations/hubspot.js";
+import { hasRejectedPushes, heldRecordIds, prunePushes, pushHubSpotEdits } from "../integrations/hubspot-push.js";
 import { SyncBusyError, SyncError, type Conv, type MappedField, type SourceField, type SyncSource } from "./source.js";
 
 export { SyncBusyError, SyncError, type MappedField, type SourceField, type SyncSource } from "./source.js";
@@ -52,6 +53,10 @@ export interface SyncRow {
   last_synced_at: Date | null;
   last_error: string | null;
   last_record_count: number | null;
+  two_way: boolean;
+  writable_keys: string[];
+  last_full_synced_at: Date | null;
+  pulled_through: Date | null;
 }
 
 /** Field types copied as-is (config and values round-trip unchanged). */
@@ -267,17 +272,17 @@ async function tableSource(deps: SyncDeps, sync: SyncRow): Promise<SyncSource> {
   return { fields, rows };
 }
 
-async function hubspotSyncSource(deps: SyncDeps, sync: SyncRow): Promise<SyncSource> {
+async function hubspotSyncSource(deps: SyncDeps, sync: SyncRow, since: Date | null): Promise<SyncSource> {
   const conn = sync.connection_id ? await loadConnection(deps.db, sync.connection_id) : null;
   if (!conn) throw new SyncError("The HubSpot connection for this sync was removed. Connect HubSpot again and set up a new sync.");
   if (!deps.secretKey) throw new SyncError("The server has no encryption key configured for connections");
-  return hubspotSource(openCredentials(conn, deps.secretKey).accessToken, parseHubSpotConfig(sync.source_config));
+  return hubspotSource(openCredentials(conn, deps.secretKey).accessToken, parseHubSpotConfig(sync.source_config), { since });
 }
 
-export function openSyncSource(deps: SyncDeps, sync: SyncRow): Promise<SyncSource> {
+export function openSyncSource(deps: SyncDeps, sync: SyncRow, since: Date | null = null): Promise<SyncSource> {
   switch (sync.provider) {
     case "hubspot":
-      return hubspotSyncSource(deps, sync);
+      return hubspotSyncSource(deps, sync, since);
     default:
       return tableSource(deps, sync);
   }
@@ -308,28 +313,58 @@ export interface SyncResult {
   deleted: number;
   fieldsChanged: number;
   total: number;
+  /** "incremental" = only records changed since the last pull were read. */
+  mode: "full" | "incremental";
+  /** Local edits written back to the source (two-way syncs). */
+  pushed: number;
+  pushError: string | null;
 }
+
+/** Overlap for incremental pulls; HubSpot's search index trails writes slightly. */
+const INCREMENTAL_OVERLAP_MS = 5 * 60_000;
 
 /**
  * Bring one synced table up to date. Records failures on the sync row and
  * rethrows; throws SyncBusyError (without recording it) if a run is in progress.
+ * HubSpot syncs read only recent changes between full runs unless `full` is set.
  */
-export async function runTableSync(deps: SyncDeps, syncId: string): Promise<SyncResult> {
+export async function runTableSync(deps: SyncDeps, syncId: string, opts: { full?: boolean } = {}): Promise<SyncResult> {
   const { db } = deps;
   const sync = await loadSync(db, { id: syncId });
   if (!sync) throw new SyncError("Sync not found");
-  const claimed = await sql<{ id: string }>`
+  const claimed = await sql<{ now: Date }>`
     UPDATE data.table_syncs SET locked_until = now() + make_interval(mins => ${LOCK_MINUTES}::int)
     WHERE id = ${sync.id} AND (locked_until IS NULL OR locked_until < now())
-    RETURNING id
+    RETURNING clock_timestamp() AS now
   `.execute(db);
   if (!claimed.rows[0]) throw new SyncBusyError();
+  const pullStart = claimed.rows[0].now;
+  const fullDue =
+    !sync.last_full_synced_at || new Date(sync.last_full_synced_at).getTime() < pullStart.getTime() - sync.interval_minutes * 60_000;
+  const incremental =
+    sync.provider === "hubspot" &&
+    !opts.full &&
+    !fullDue &&
+    sync.pulled_through !== null &&
+    // Rejected edits are reverted by a full pull: HubSpot didn't change those records, so a "changed since" pull won't see them.
+    !(await hasRejectedPushes(db, sync.id, sync.last_full_synced_at));
+  const since = incremental ? new Date(new Date(sync.pulled_through!).getTime() - INCREMENTAL_OVERLAP_MS) : null;
   try {
-    const result = await syncOnce(deps, sync);
+    let result: SyncResult;
+    try {
+      result = await syncOnce(deps, sync, since);
+    } catch (err) {
+      if (!(err instanceof SearchTooLarge)) throw err;
+      result = await syncOnce(deps, sync, null);
+    }
+    const full = result.mode === "full";
     await sql`
       UPDATE data.table_syncs
       SET status = CASE WHEN status = 'paused' THEN 'paused' ELSE 'active' END,
-          last_synced_at = now(), last_error = NULL, last_record_count = ${result.total}, updated_at = now()
+          last_synced_at = now(), last_error = ${result.pushError}, last_record_count = ${result.total},
+          pulled_through = ${pullStart},
+          last_full_synced_at = CASE WHEN ${full}::boolean THEN ${pullStart}::timestamptz ELSE last_full_synced_at END,
+          updated_at = now()
       WHERE id = ${sync.id}
     `.execute(db);
     return result;
@@ -345,11 +380,17 @@ export async function runTableSync(deps: SyncDeps, syncId: string): Promise<Sync
   }
 }
 
-async function syncOnce(deps: SyncDeps, sync: SyncRow): Promise<SyncResult> {
+async function syncOnce(deps: SyncDeps, sync: SyncRow, since: Date | null): Promise<SyncResult> {
   const { db } = deps;
   const dest = await sql<{ id: string }>`SELECT id FROM data.tables WHERE id = ${sync.table_id} AND deleted_at IS NULL`.execute(db);
   if (!dest.rows[0]) throw new SyncError("The synced table was deleted");
-  const source = await openSyncSource(deps, sync);
+  // Local edits go out first so the pull below reads them back instead of older values.
+  const push = await pushHubSpotEdits(deps, sync);
+  const source = await openSyncSource(deps, sync, since);
+  if (source.writable && stable([...source.writable].sort()) !== stable([...(sync.writable_keys ?? [])].sort())) {
+    await sql`UPDATE data.table_syncs SET writable_keys = ${JSON.stringify(source.writable)}::jsonb WHERE id = ${sync.id}`.execute(db);
+    sync.writable_keys = source.writable;
+  }
 
   const orgId = await orgOf(db, sync.base_id);
   const actor = { actorType: "system" as const, actorId: sync.owner_user_id, via: "system" as const };
@@ -470,7 +511,12 @@ async function syncOnce(deps: SyncDeps, sync: SyncRow): Promise<SyncResult> {
       else if (prev.content_hash !== hash) toUpdate.push({ srcId: key, destId: prev.dest_record_id, fields, hash });
     }
   }
-  const toDelete = mapRows.rows.filter((r) => !live.has(r.source_record_id));
+  // Records edited here recently (or waiting to go out) keep their local values for now.
+  if (sync.two_way) {
+    const held = await heldRecordIds(db, sync.id);
+    if (held.size) toUpdate.splice(0, toUpdate.length, ...toUpdate.filter((u) => !held.has(u.destId)));
+  }
+  const toDelete = source.partial ? [] : mapRows.rows.filter((r) => !live.has(r.source_record_id));
 
   const writeCtx = (mctx: { changeSeq: number; afterCommit: WriteContext["afterCommit"] }, trx: WriteContext["trx"]): WriteContext => ({
     trx,
@@ -541,13 +587,34 @@ async function syncOnce(deps: SyncDeps, sync: SyncRow): Promise<SyncResult> {
       };
     });
   }
-  return { created: toCreate.length, updated: toUpdate.length, deleted: toDelete.length, fieldsChanged, total: live.size };
+  if (sync.two_way) await prunePushes(db, sync.id);
+  return {
+    created: toCreate.length,
+    updated: toUpdate.length,
+    deleted: toDelete.length,
+    fieldsChanged,
+    total: source.partial ? known.size + toCreate.length : live.size,
+    mode: source.partial ? "incremental" : "full",
+    pushed: push.pushed,
+    pushError: push.error,
+  };
 }
 
-/** Destination field ids managed by syncs, per destination table (for read-only marking). */
+/** Destination field ids people can edit in a two-way sync (written back to the source). */
+export function editableSyncedFieldIds(s: Pick<SyncRow, "two_way" | "writable_keys" | "field_map">): Set<string> {
+  if (!s.two_way) return new Set();
+  return new Set((s.writable_keys ?? []).map((k) => s.field_map?.[k]).filter((x): x is string => Boolean(x)));
+}
+
+/** Read-only destination field ids managed by syncs, per destination table. */
 export async function syncedFieldsByTable(db: TabulaDb, baseId: string): Promise<Map<string, { sync: SyncRow; fieldIds: Set<string> }>> {
   const r = await sql<SyncRow>`SELECT * FROM data.table_syncs WHERE base_id = ${baseId}`.execute(db);
-  return new Map(r.rows.map((s) => [s.table_id, { sync: s, fieldIds: new Set(Object.values(s.field_map ?? {})) }]));
+  return new Map(
+    r.rows.map((s) => {
+      const editable = editableSyncedFieldIds(s);
+      return [s.table_id, { sync: s, fieldIds: new Set(Object.values(s.field_map ?? {}).filter((f) => !editable.has(f))) }];
+    }),
+  );
 }
 
 /** Syncs that are due, or whose source table changed (`sourceTableIds`). */
@@ -560,7 +627,12 @@ export async function dueSyncIds(db: TabulaDb, sourceTableIds?: string[]): Promi
         SELECT id FROM data.table_syncs
         WHERE status <> 'paused'
           AND (locked_until IS NULL OR locked_until < now())
-          AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(mins => interval_minutes))
+          AND (
+            last_synced_at IS NULL
+            OR last_synced_at < now() - make_interval(mins => interval_minutes)
+            -- HubSpot: a cheap "changed since" check every minute between full runs.
+            OR (provider = 'hubspot' AND status = 'active' AND last_synced_at < now() - interval '1 minute')
+          )
         ORDER BY last_synced_at NULLS FIRST LIMIT 20
       `.execute(db);
   return r.rows.map((x) => x.id);

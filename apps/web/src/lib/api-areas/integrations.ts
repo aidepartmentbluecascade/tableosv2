@@ -45,7 +45,7 @@ export const integrationsApi = {
       `${b(baseId)}/connections/${encodeURIComponent(connectionId)}/hubspot/properties?object=${object}`,
     );
   },
-  createHubSpotSync(baseId: string, body: { connectionId: string; object: HubSpotObject; properties: string[]; name?: string }) {
+  createHubSpotSync(baseId: string, body: { connectionId: string; object: HubSpotObject; properties: string[]; name?: string; twoWay?: boolean }) {
     return request<{ tableId: string; syncId: string }>(`${b(baseId)}/hubspot-syncs`, { method: "POST", json: body });
   },
 };

@@ -2,7 +2,7 @@ import { SyncError, type MappedField, type SourceField, type SyncSource } from "
 
 /**
  * HubSpot CRM as a sync source. Uses a private-app access token
- * (Settings â†’ Integrations â†’ Private apps) against the CRM v3 API.
+ * (Settings → Integrations → Private apps) against the CRM v3 API.
  */
 
 export const HUBSPOT_OBJECTS = {
@@ -54,11 +54,21 @@ export interface HubSpotProperty {
   hidden?: boolean;
   calculated?: boolean;
   options?: Array<{ label: string; value: string; hidden?: boolean; displayOrder?: number }>;
+  modificationMetadata?: { readOnlyValue?: boolean };
 }
 
 export interface HubSpotAccount {
   portalId: string | null;
   uiDomain: string;
+}
+
+const SEARCH_CAP = 9_900;
+
+/** An incremental pull would exceed HubSpot's search limit; a full pull is needed instead. */
+export class SearchTooLarge extends SyncError {
+  constructor() {
+    super("Too many HubSpot changes for an incremental sync");
+  }
 }
 
 export class HubSpotError extends SyncError {
@@ -79,7 +89,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class HubSpotClient {
   constructor(private readonly token: string) {}
 
-  async get<T>(path: string, query: Record<string, string | undefined> = {}): Promise<T> {
+  get<T>(path: string, query: Record<string, string | undefined> = {}): Promise<T> {
+    return this.request<T>("GET", path, query);
+  }
+
+  async request<T>(method: "GET" | "POST" | "PATCH", path: string, query: Record<string, string | undefined> = {}, body?: unknown): Promise<T> {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(query)) if (v !== undefined) qs.set(k, v);
     const q = qs.toString();
@@ -88,7 +102,13 @@ export class HubSpotClient {
       let res: Response;
       try {
         res = await fetch(url, {
-          headers: { authorization: `Bearer ${this.token}`, accept: "application/json" },
+          method,
+          headers: {
+            authorization: `Bearer ${this.token}`,
+            accept: "application/json",
+            ...(body !== undefined ? { "content-type": "application/json" } : {}),
+          },
+          ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
           signal: AbortSignal.timeout(30_000),
         });
       } catch (err) {
@@ -104,8 +124,63 @@ export class HubSpotClient {
         continue;
       }
       if (!res.ok) throw await hubspotError(res);
-      return (await res.json()) as T;
+      const text = await res.text();
+      return (text ? JSON.parse(text) : {}) as T;
     }
+  }
+
+  /** Records changed at or after `since` (HubSpot search; capped at 10,000 results). */
+  async *changedSince(
+    object: HubSpotObject,
+    properties: string[],
+    since: Date,
+  ): AsyncGenerator<Array<{ id: string; properties: Record<string, string | null> }>> {
+    const modified = object === "contacts" ? "lastmodifieddate" : "hs_lastmodifieddate";
+    let after: string | undefined;
+    do {
+      const r = await this.request<{
+        total?: number;
+        results: Array<{ id: string; properties: Record<string, string | null> }>;
+        paging?: { next?: { after?: string } };
+      }>("POST", `/crm/v3/objects/${object}/search`, {}, {
+        filterGroups: [{ filters: [{ propertyName: modified, operator: "GTE", value: String(since.getTime()) }] }],
+        sorts: [{ propertyName: modified, direction: "ASCENDING" }],
+        properties,
+        limit: 100,
+        ...(after ? { after } : {}),
+      });
+      if ((r.total ?? 0) > SEARCH_CAP) throw new SearchTooLarge();
+      const page = r.results ?? [];
+      if (page.length) yield page;
+      after = r.paging?.next?.after;
+    } while (after);
+  }
+
+  /** Update records; maps each id to null (saved) or the error HubSpot gave for it. */
+  async updateMany(object: HubSpotObject, inputs: Array<{ id: string; properties: Record<string, string> }>): Promise<Map<string, HubSpotError | null>> {
+    const out = new Map<string, HubSpotError | null>();
+    for (let i = 0; i < inputs.length; i += 100) {
+      const chunk = inputs.slice(i, i + 100);
+      try {
+        const r = await this.request<{ results?: Array<{ id: string }> }>("POST", `/crm/v3/objects/${object}/batch/update`, {}, { inputs: chunk });
+        const ok = new Set((r.results ?? []).map((x) => String(x.id)));
+        for (const c of chunk) if (ok.has(c.id)) out.set(c.id, null);
+      } catch (err) {
+        if (!(err instanceof HubSpotError) || err.status === 401 || err.status === 403 || err.status === 0 || err.status === 429 || err.status >= 500) throw err;
+      }
+      // Whatever the batch didn't confirm is retried one by one so one bad value doesn't block the rest.
+      for (const c of chunk) {
+        if (out.has(c.id)) continue;
+        try {
+          await this.request("PATCH", `/crm/v3/objects/${object}/${encodeURIComponent(c.id)}`, {}, { properties: c.properties });
+          out.set(c.id, null);
+        } catch (err) {
+          if (!(err instanceof HubSpotError) || err.status === 401 || err.status === 403 || err.status === 0) throw err;
+          out.set(c.id, err);
+        }
+      }
+    }
+    return out;
   }
 
   async account(): Promise<HubSpotAccount> {
@@ -118,7 +193,7 @@ export class HubSpotClient {
     return r.results ?? [];
   }
 
-  /** Owner id â†’ display name; empty when the token lacks the owners scope. */
+  /** Owner id → display name; empty when the token lacks the owners scope. */
   async ownerNames(): Promise<Map<string, string>> {
     const out = new Map<string, string>();
     let after: string | undefined;
@@ -175,7 +250,7 @@ async function hubspotError(res: Response): Promise<HubSpotError> {
 }
 
 // ---------------------------------------------------------------------------
-// Property â†’ field mapping
+// Property → field mapping
 // ---------------------------------------------------------------------------
 
 const AMOUNTISH = /amount|revenue|price|value|cost|probability/i;
@@ -273,6 +348,60 @@ export function planProperty(p: HubSpotProperty, owners: Map<string, string> = n
   }
 }
 
+const READ_ONLY_PROPS = new Set(["hs_object_id", "createdate", "hs_createdate", "lastmodifieddate", "hs_lastmodifieddate"]);
+
+/** Whether TableOS may write this property back to HubSpot. */
+export function isWritableProperty(p: HubSpotProperty): boolean {
+  return !p.calculated && !p.modificationMetadata?.readOnlyValue && !READ_ONLY_PROPS.has(p.name);
+}
+
+/** A cell value HubSpot can't accept; the edit is dropped and HubSpot's value comes back. */
+export class PushValueError extends SyncError {}
+
+function selectLabelsById(config: Record<string, unknown> | null | undefined): Map<string, string> {
+  const opts = Array.isArray(config?.["options"]) ? (config!["options"] as Array<{ id?: string; label?: string }>) : [];
+  return new Map(opts.filter((o) => o.id && o.label).map((o) => [o.id!, o.label!]));
+}
+
+/** TableOS cell value (wire format) → HubSpot property value ("" clears it). */
+export function toHubSpotValue(p: HubSpotProperty, fieldConfig: Record<string, unknown> | null | undefined, wire: unknown, owners: Map<string, string> = new Map()): string {
+  const isBool = p.type === "bool" || (p.type === "enumeration" && p.fieldType === "booleancheckbox");
+  if (isBool) return wire === true ? "true" : "false";
+  if (wire === null || wire === undefined || wire === "" || (Array.isArray(wire) && wire.length === 0)) return "";
+  switch (p.type) {
+    case "number": {
+      const n = typeof wire === "number" ? wire : Number(wire);
+      if (!Number.isFinite(n)) throw new PushValueError(`${p.label} needs a number`);
+      return String(n);
+    }
+    case "date": {
+      const d = datePart(String(wire));
+      if (!d) throw new PushValueError(`${p.label} needs a date`);
+      return d;
+    }
+    case "datetime": {
+      const d = dateTime(String(wire));
+      if (!d) throw new PushValueError(`${p.label} needs a date and time`);
+      return d;
+    }
+    case "enumeration": {
+      const labels = optionLabels(p, owners);
+      if (labels.size === 0) return String(wire);
+      const valueByLabel = new Map([...labels].map(([value, label]) => [label.toLowerCase(), value]));
+      const localLabels = selectLabelsById(fieldConfig);
+      const toValue = (x: unknown) => {
+        const label = localLabels.get(String(x)) ?? String(x);
+        const value = valueByLabel.get(label.toLowerCase());
+        if (value === undefined) throw new PushValueError(`“${label}” isn't an option for ${p.label} in HubSpot`);
+        return value;
+      };
+      return (Array.isArray(wire) ? wire : [wire]).map(toValue).join(";");
+    }
+    default:
+      return Array.isArray(wire) ? wire.map(String).join(", ") : String(wire);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Source adapter
 // ---------------------------------------------------------------------------
@@ -304,7 +433,8 @@ export function hubspotPrimaryField(cfg: HubSpotSourceConfig, props: HubSpotProp
   return { id: `p:${def.primary}`, name: props.find((p) => p.name === def.primary)?.label ?? "Name" };
 }
 
-export async function hubspotSource(token: string, cfg: HubSpotSourceConfig): Promise<SyncSource> {
+/** `since` = only records changed since then (an incremental pull; deletions aren't seen). */
+export async function hubspotSource(token: string, cfg: HubSpotSourceConfig, opts: { since?: Date | null } = {}): Promise<SyncSource> {
   const client = new HubSpotClient(token);
   const def = HUBSPOT_OBJECTS[cfg.object];
   const all = await client.properties(cfg.object);
@@ -327,11 +457,18 @@ export async function hubspotSource(token: string, cfg: HubSpotSourceConfig): Pr
   fields.push({ id: "__id", name: "HubSpot ID", mapped: { type: "text", config: {}, conv: "text", compare: "none" } });
   if (cfg.portalId) fields.push({ id: "__url", name: "HubSpot URL", mapped: { type: "url", config: {}, conv: "text", compare: "none" } });
 
+  const writable: string[] = [];
+  const primaryProp = def.primary ? byName.get(def.primary) : undefined;
+  if (primaryProp && isWritableProperty(primaryProp)) writable.push(primary.id);
+  for (const n of plans.keys()) if (isWritableProperty(byName.get(n)!)) writable.push(`p:${n}`);
+
   const nameProps = def.primary ? [def.primary] : ["firstname", "lastname", "email"];
   const request = [...new Set([...chosen, ...nameProps])];
+  const since = opts.since ?? null;
 
   async function* rows() {
-    for await (const page of client.objects(cfg.object, request)) {
+    const pages = since ? client.changedSince(cfg.object, request, since) : client.objects(cfg.object, request);
+    for await (const page of pages) {
       yield page.map((obj) => {
         const props = obj.properties ?? {};
         const values: Record<string, unknown> = {};
@@ -347,5 +484,5 @@ export async function hubspotSource(token: string, cfg: HubSpotSourceConfig): Pr
     }
   }
 
-  return { fields, rows };
+  return { fields, rows, writable, partial: Boolean(since) };
 }
