@@ -1,10 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { request, type FieldDto, type FilterAst, type TableDto } from "../../lib/api.ts";
 import { integrationsApi } from "../../lib/api-areas/integrations.ts";
 import { errorMessage } from "../../app/toast.tsx";
-import { connectionsOf, useConnections } from "../connectors/connect.tsx";
+import { confirmDisconnect, ConnectGmailButton, ConnectTokenForm, connectionsOf, useConnections, useDisconnect } from "../connectors/connect.tsx";
 import type {
   ActionConfig,
   AutomationAction,
@@ -456,37 +455,89 @@ function RecipientPicker({
 }
 
 /** One of the editor's own Gmail / Slack connections (automations run with the accounts of whoever last edited them). */
-function ConnectionPicker({ provider, value, onChange }: { provider: "gmail" | "slack"; value: string; onChange: (id: string) => void }) {
+function ConnectionPicker({
+  provider,
+  value,
+  returnTo,
+  onChange,
+}: {
+  provider: "gmail" | "slack";
+  value: string;
+  /** Where Google sends the user back to after "Sign in with Google". */
+  returnTo: string;
+  onChange: (id: string) => void;
+}) {
   const conns = useConnections();
+  const disconnect = useDisconnect();
+  const [adding, setAdding] = useState(false);
   const list = connectionsOf(conns.data?.connections, provider);
-  const label = provider === "gmail" ? "Gmail account" : "Slack workspace";
+  const name = provider === "gmail" ? "Gmail" : "Slack";
+  const label = provider === "gmail" ? "Gmail account" : "Slack account";
   useEffect(() => {
     if (!value && list[0]) onChange(list[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conns.data, value]);
-  if (conns.isLoading) return <p className={styles.muted}>Loading your {provider === "gmail" ? "Gmail" : "Slack"} accounts…</p>;
+  if (conns.isLoading) return <p className={styles.muted}>Loading your {name} accounts…</p>;
   const missing = Boolean(value) && !list.some((c) => c.id === value);
+  const current = list.find((c) => c.id === value);
+  const connectForm =
+    provider === "gmail" ? (
+      <div className={styles.connectInline}>
+        <ConnectGmailButton available={conns.data?.providers.gmail.available ?? false} returnTo={returnTo} />
+        {adding ? (
+          <button type="button" className={styles.linkBtn} onClick={() => setAdding(false)}>
+            Cancel
+          </button>
+        ) : null}
+      </div>
+    ) : (
+      <ConnectTokenForm
+        provider="slack"
+        onConnected={(c) => {
+          setAdding(false);
+          onChange(c.id);
+        }}
+        {...(adding ? { onCancel: () => setAdding(false) } : {})}
+      />
+    );
   return (
     <div className={styles.field}>
       <span className={styles.fieldLabel}>{label}</span>
       {list.length ? (
-        <select className={styles.select} value={missing ? "__other" : value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
-          {missing ? <option value="__other">Someone else's account (pick one of yours)</option> : null}
-          {list.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <span className={styles.hint}>
-          You haven't connected {provider === "gmail" ? "Gmail" : "Slack"} yet.{" "}
-          <Link to="/connectors" target="_blank">
-            Connect it in Connectors
-          </Link>
-          , then come back.
-        </span>
-      )}
+        <div className={styles.connectInline}>
+          <select
+            className={styles.select}
+            value={missing ? "__other" : value}
+            onChange={(e) => {
+              if (e.target.value === "__new") setAdding(true);
+              else onChange(e.target.value);
+            }}
+            aria-label={label}
+          >
+            {missing ? <option value="__other">Someone else's account (pick one of yours)</option> : null}
+            {list.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+                {c.accountLabel && c.accountLabel !== c.name ? ` (${c.accountLabel})` : ""}
+              </option>
+            ))}
+            <option value="__new">+ Connect another {name} account…</option>
+          </select>
+          {current ? (
+            <button
+              type="button"
+              className={styles.linkBtn}
+              disabled={disconnect.isPending}
+              onClick={() => {
+                if (confirmDisconnect(current)) disconnect.mutate(current, { onSuccess: () => onChange("") });
+              }}
+            >
+              Disconnect
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {!list.length || adding ? connectForm : null}
       {missing ? (
         <span className={styles.hint}>Automations run with the accounts of the person who last edited them, so this step needs one of your accounts.</span>
       ) : null}
@@ -547,6 +598,7 @@ function SlackChannelPicker({ connectionId, value, onChange }: { connectionId: s
 
 export function ActionEditor({
   baseId,
+  returnTo,
   action,
   index,
   allActions,
@@ -555,6 +607,8 @@ export function ActionEditor({
   onChange,
 }: {
   baseId: string;
+  /** App URL that reopens this step (used after "Sign in with Google"). */
+  returnTo: string;
   action: AutomationAction;
   /** Index among top-level actions (for token availability). */
   index: number;
@@ -678,7 +732,7 @@ export function ActionEditor({
 
       {action.type === "gmail_send" ? (
         <>
-          <ConnectionPicker provider="gmail" value={cfg.connectionId ?? ""} onChange={(connectionId) => set({ connectionId })} />
+          <ConnectionPicker provider="gmail" value={cfg.connectionId ?? ""} returnTo={returnTo} onChange={(connectionId) => set({ connectionId })} />
           <Field label="To" hint="Separate addresses with commas.">
             <TokenInput value={cfg.to ?? ""} onChange={(v) => set({ to: v })} tokens={tokens} ariaLabel="To" />
           </Field>
@@ -704,6 +758,7 @@ export function ActionEditor({
           <ConnectionPicker
             provider="slack"
             value={cfg.connectionId ?? ""}
+            returnTo={returnTo}
             onChange={(connectionId) => set({ connectionId, channel: "", channelName: "" })}
           />
           {cfg.connectionId ? (
@@ -756,6 +811,7 @@ export function ActionEditor({
       {action.type === "condition" ? (
         <ConditionEditor
           baseId={baseId}
+          returnTo={returnTo}
           action={action}
           index={index}
           allActions={allActions}
@@ -833,6 +889,7 @@ const COND_OPS: { op: BranchCondition["op"]; label: string; unary?: boolean }[] 
 
 function ConditionEditor({
   baseId,
+  returnTo,
   action,
   index,
   allActions,
@@ -842,6 +899,7 @@ function ConditionEditor({
   onChange,
 }: {
   baseId: string;
+  returnTo: string;
   action: AutomationAction;
   index: number;
   allActions: AutomationAction[];
@@ -901,6 +959,7 @@ function ConditionEditor({
           key={branch}
           label={branch === "then" ? "If true, run" : "Otherwise, run"}
           baseId={baseId}
+          returnTo={returnTo}
           actions={cfg[branch] ?? []}
           index={index}
           allActions={allActions}
@@ -916,6 +975,7 @@ function ConditionEditor({
 function BranchActions({
   label,
   baseId,
+  returnTo,
   actions,
   index,
   allActions,
@@ -925,6 +985,7 @@ function BranchActions({
 }: {
   label: string;
   baseId: string;
+  returnTo: string;
   actions: AutomationAction[];
   index: number;
   allActions: AutomationAction[];
@@ -955,6 +1016,7 @@ function BranchActions({
           {open === a.id ? (
             <ActionEditor
               baseId={baseId}
+              returnTo={returnTo}
               action={a}
               index={index}
               allActions={allActions}

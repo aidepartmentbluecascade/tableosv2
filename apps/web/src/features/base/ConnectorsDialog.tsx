@@ -3,11 +3,11 @@ import type { TableDto } from "../../lib/api.ts";
 import type { ConnectorProvider } from "../../lib/api-areas/integrations.ts";
 import { Dialog, uiStyles } from "../../app/ui.tsx";
 import { errorMessage } from "../../app/toast.tsx";
-import { confirmDisconnect, ConnectProvider, connectionsOf, PROVIDERS, ProviderLogo, useConnections, useDisconnect } from "../connectors/connect.tsx";
+import { confirmDisconnect, CONNECTOR_PROVIDERS, ConnectProvider, connectionsOf, ProviderLogo, useConnections, useDisconnect } from "../connectors/connect.tsx";
 import type { AddMode } from "./TableTabs.tsx";
 import styles from "./base-shell.module.css";
 
-const SYNCABLE: Partial<Record<ConnectorProvider, AddMode>> = { hubspot: "hubspot", airtable: "airtable", gmail: "gmail" };
+const SYNCABLE: Partial<Record<ConnectorProvider, AddMode>> = { hubspot: "hubspot", airtable: "airtable" };
 
 /** Tools → Connectors: your connected accounts and the tables in this base synced from them. */
 export function ConnectorsDialog({
@@ -42,13 +42,13 @@ export function ConnectorsDialog({
       }
     >
       <p className={uiStyles.muted}>
-        Accounts you connect work in all of your bases. Sync tables from Airtable, HubSpot or Gmail into this base, and use Gmail or Slack in automation
-        steps.
+        Accounts you connect work in all of your bases. Sync tables from Airtable or HubSpot into this base. Gmail and Slack are connected from the
+        automation steps that use them.
       </p>
       {conns.isLoading ? <p className={uiStyles.muted}>Loading…</p> : null}
       {conns.isError ? <p className={uiStyles.error}>{errorMessage(conns.error)}</p> : null}
       <ul className={styles.connList}>
-        {PROVIDERS.map((p) => {
+        {CONNECTOR_PROVIDERS.map((p) => {
           const list = connectionsOf(conns.data?.connections, p.key);
           const addMode = SYNCABLE[p.key];
           return (
@@ -110,7 +110,7 @@ export function ConnectorsDialog({
                   <ConnectProvider
                     provider={p.key}
                     gmailAvailable={gmailAvailable}
-                    {...(list.length ? { buttonLabel: p.key === "gmail" ? "Connect another Google account" : "+ Connect another account" } : {})}
+                    {...(list.length ? { buttonLabel: "+ Connect another account" } : {})}
                   />
                 </div>
               ) : null}

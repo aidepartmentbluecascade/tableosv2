@@ -4,7 +4,7 @@ import { connectionsQueryKey } from "../../lib/api-areas/integrations.ts";
 import { uiStyles } from "../../app/ui.tsx";
 import { errorMessage } from "../../app/toast.tsx";
 import accountStyles from "../account/account.module.css";
-import { confirmDisconnect, ConnectProvider, connectionsOf, PROVIDERS, ProviderLogo, useConnections, useDisconnect } from "./connect.tsx";
+import { confirmDisconnect, CONNECTOR_PROVIDERS, ConnectProvider, connectionsOf, ProviderLogo, useConnections, useDisconnect } from "./connect.tsx";
 import styles from "./connectors.module.css";
 
 export interface ConnectorsNotice {
@@ -43,8 +43,8 @@ export function ConnectorsPage({ notice, onBack, onNoticeShown }: { notice: Conn
       </header>
       <main className={accountStyles.main}>
         <p className={accountStyles.muted}>
-          Connect your accounts once and use them in every base: add synced tables from <em>+ Add or import → Sync from…</em>, and pick Gmail or Slack
-          in automation steps. Connections are personal — only you can use the accounts you connect.
+          Connect your accounts once and use them in every base: add synced tables from <em>+ Add or import → Sync from…</em>. Connections are
+          personal — only you can use the accounts you connect. Gmail and Slack are connected from the automation steps that use them.
         </p>
         {shown.connected ? (
           <div role="status" className={accountStyles.ok}>
@@ -62,7 +62,7 @@ export function ConnectorsPage({ notice, onBack, onNoticeShown }: { notice: Conn
           </div>
         ) : null}
         <div className={styles.providers}>
-          {PROVIDERS.map((p) => {
+          {CONNECTOR_PROVIDERS.map((p) => {
             const list = connectionsOf(conns.data?.connections, p.key);
             return (
               <section key={p.key} className={styles.card} aria-labelledby={`prov-${p.key}`}>
@@ -114,7 +114,7 @@ export function ConnectorsPage({ notice, onBack, onNoticeShown }: { notice: Conn
                     provider={p.key}
                     gmailAvailable={gmailAvailable}
                     returnTo="/connectors"
-                    {...(list.length ? { buttonLabel: p.key === "gmail" ? "Connect another Google account" : `+ Connect another ${p.label} account` } : {})}
+                    {...(list.length ? { buttonLabel: `+ Connect another ${p.label} account` } : {})}
                   />
                 ) : null}
               </section>

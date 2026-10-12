@@ -353,7 +353,7 @@ export function AccountPage({ onBack }: { onBack?: () => void }) {
             <SessionsSection />
             <Section
               title="Connectors"
-              description="Airtable, HubSpot, Gmail and Slack accounts you've connected. They work in all of your bases and automations."
+              description="Airtable and HubSpot accounts you've connected for synced tables. They work in all of your bases."
             >
               <div className={styles.actions}>
                 <Link className={styles.secondary} to="/connectors" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center" }}>

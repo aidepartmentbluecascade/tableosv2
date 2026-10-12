@@ -45,6 +45,9 @@ export const PROVIDERS: ProviderInfo[] = [
   },
 ];
 
+/** Listed under Connectors; Gmail and Slack accounts are connected from the automation steps that use them. */
+export const CONNECTOR_PROVIDERS = PROVIDERS.filter((p) => p.key === "airtable" || p.key === "hubspot");
+
 export function providerInfo(key: ConnectorProvider): ProviderInfo {
   return PROVIDERS.find((p) => p.key === key)!;
 }

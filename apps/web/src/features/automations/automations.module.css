@@ -772,6 +772,15 @@
   cursor: pointer;
   align-self: flex-start;
 }
+.connectInline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.connectInline > .linkBtn {
+  align-self: center;
+  white-space: nowrap;
+}
 .muted {
   margin: 0;
   color: var(--tabula-color-text-muted);

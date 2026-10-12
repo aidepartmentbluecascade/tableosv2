@@ -361,8 +361,9 @@ export const HELP_TOPICS: HelpTopic[] = [
         </p>
         <h2>Connectors</h2>
         <p>
-          Your connected accounts live under <b>Account menu → Connectors</b> and work in every base you can edit. Only you can use the accounts you
-          connect; teammates connect their own.
+          Airtable and HubSpot accounts live under <b>Account menu → Connectors</b> and work in every base you can edit. Gmail and Slack are connected
+          right in the automation step that uses them (pick <b>+ Connect another account</b> in its account list to add more). Only you can use the
+          accounts you connect; teammates connect their own.
         </p>
         <ul>
           <li>

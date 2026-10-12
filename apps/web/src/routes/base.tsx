@@ -160,6 +160,7 @@ export function BasePage({ baseId }: { baseId: string }) {
   const tables = baseQuery.data?.tables ?? [];
   const { role } = useBaseRole(baseId);
   const [baseTab, setBaseTab] = useState<BaseTab>("data");
+  const [automationTarget, setAutomationTarget] = useState<{ automationId: string; actionId?: string } | null>(null);
   const [activeTableId, setActiveTableId] = useState<string | null>(null);
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -179,16 +180,22 @@ export function BasePage({ baseId }: { baseId: string }) {
     const connected = params.get("connected");
     const connectError = params.get("connectError");
     if (!connected && !connectError) return;
-    for (const k of ["connected", "reconnected", "connectError"]) params.delete(k);
+    const automationId = params.get("automation");
+    const actionId = params.get("step");
+    for (const k of ["connected", "reconnected", "connectError", "automation", "step"]) params.delete(k);
     const q = params.toString();
     window.history.replaceState(window.history.state, "", `${window.location.pathname}${q ? `?${q}` : ""}`);
+    if (automationId) {
+      setAutomationTarget({ automationId, ...(actionId ? { actionId } : {}) });
+      setBaseTab("automations");
+    }
     if (connectError) {
       toast.error(new Error(connectError), "Gmail wasn't connected");
       return;
     }
     toast.success("Gmail connected");
     void queryClient.invalidateQueries({ queryKey: connectionsQueryKey });
-    setOpenAdd("gmail");
+    if (!automationId) setOpenAdd("gmail");
   }, [queryClient]);
 
   // `?table=tbl_…` (search results, notification links) selects the table.
@@ -542,7 +549,7 @@ export function BasePage({ baseId }: { baseId: string }) {
           </>
         ) : null}
 
-        {baseTab === "automations" ? <AutomationsPanel baseId={baseId} /> : null}
+        {baseTab === "automations" ? <AutomationsPanel baseId={baseId} initial={automationTarget} /> : null}
 
         {baseTab === "interfaces" ? (
           <div className={styles.interfacesTab}>

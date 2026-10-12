@@ -36,9 +36,9 @@ function lastRunText(a: Automation): string {
   return "On · no runs yet";
 }
 
-export function AutomationsPanel({ baseId }: { baseId: string }) {
+export function AutomationsPanel({ baseId, initial }: { baseId: string; initial?: { automationId: string; actionId?: string } | null }) {
   const queryClient = useQueryClient();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initial?.automationId ?? null);
   const [find, setFind] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -123,7 +123,14 @@ export function AutomationsPanel({ baseId }: { baseId: string }) {
       </aside>
 
       {selected ? (
-        <AutomationBuilder key={selected.id} baseId={baseId} automation={selected} tables={tables} onDeleted={() => setSelectedId(null)} />
+        <AutomationBuilder
+          key={selected.id}
+          baseId={baseId}
+          automation={selected}
+          tables={tables}
+          initialActionId={initial?.automationId === selected.id ? initial.actionId : undefined}
+          onDeleted={() => setSelectedId(null)}
+        />
       ) : listQuery.isLoading ? (
         <main className={styles.emptyMain} />
       ) : (
@@ -207,16 +214,18 @@ function AutomationBuilder({
   baseId,
   automation,
   tables,
+  initialActionId,
   onDeleted,
 }: {
   baseId: string;
   automation: Automation;
   tables: TableDto[];
+  initialActionId?: string | undefined;
   onDeleted: () => void;
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Automation>(automation);
-  const [selection, setSelection] = useState<Selection>({ kind: "trigger" });
+  const [selection, setSelection] = useState<Selection>(initialActionId ? { kind: "action", id: initialActionId } : { kind: "trigger" });
   const [tab, setTab] = useState<"edit" | "runs">("edit");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -473,6 +482,7 @@ function AutomationBuilder({
                 </h3>
                 <ActionEditor
                   baseId={baseId}
+                  returnTo={`${window.location.pathname}?automation=${encodeURIComponent(draft.id)}&step=${encodeURIComponent(selectedAction.id)}`}
                   action={selectedAction}
                   index={selectedIndex}
                   allActions={actions}
