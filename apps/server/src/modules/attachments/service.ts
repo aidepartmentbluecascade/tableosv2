@@ -263,14 +263,12 @@ export async function createPendingUpload(
     )
   `.execute(ctx.db);
 
-  const upload: PresignedUpload =
-    isProxiedDriver(storage.driver)
-      ? {
-          url: input.apiUploadUrl(attachmentId),
-          method: "PUT",
-          headers: { "Content-Type": mime },
-        }
-      : await storage.presignUpload(objectKey, mime);
+  // Always upload through the API: direct-to-bucket uploads need a bucket CORS rule.
+  const upload: PresignedUpload = {
+    url: input.apiUploadUrl(attachmentId),
+    method: "PUT",
+    headers: { "Content-Type": mime },
+  };
 
   return { attachmentId, upload, storage };
 }

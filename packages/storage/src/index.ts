@@ -109,7 +109,14 @@ export function createStorage(env: StorageEnv): TabulaStorage {
     driver: "gcs",
 
     async ensureBucket(): Promise<void> {
-      const [exists] = await bucket.exists();
+      let exists: boolean;
+      try {
+        [exists] = await bucket.exists();
+      } catch (err) {
+        // Object-level keys (e.g. Storage Object Admin) can't read bucket metadata.
+        if ((err as { code?: number }).code === 403) return;
+        throw err;
+      }
       if (!exists) {
         await storage.createBucket(env.bucket, {
           ...(env.projectId ? { project: env.projectId } : {}),
