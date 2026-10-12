@@ -85,6 +85,8 @@ export function validateFieldConfig(type: string, config: Config, fields: FieldL
       return config["aggregation"] ? null : "Choose an aggregation.";
     case "count":
       return config["linkFieldId"] ? null : "Choose a link field.";
+    case "modified_time":
+      return Array.isArray(config["watchFieldIds"]) && config["watchFieldIds"].length === 0 ? "Choose at least one field to watch." : null;
     case "formula": {
       const expr = String(config["expression"] ?? "").trim();
       if (!expr) return "Enter a formula.";
@@ -535,6 +537,87 @@ function LinkedFieldPickers({
   );
 }
 
+/** Field types a Last modified time field can watch (values people edit). */
+const UNWATCHABLE = new Set([
+  "formula", "lookup", "rollup", "count", "ai_generated", "autonumber", "record_id",
+  "created_time", "modified_time", "created_by", "modified_by", "button",
+]);
+
+function LastModifiedConfig({
+  config,
+  onChange,
+  fields,
+  fieldId,
+}: {
+  config: Config;
+  onChange: (c: Config) => void;
+  fields: FieldLike[];
+  fieldId?: string | undefined;
+}) {
+  const watch = Array.isArray(config["watchFieldIds"]) ? (config["watchFieldIds"] as string[]) : [];
+  const [specific, setSpecific] = useState(watch.length > 0);
+  const [query, setQuery] = useState("");
+  const candidates = fields.filter((f) => f.id !== fieldId && !UNWATCHABLE.has(f.type));
+  const q = query.trim().toLowerCase();
+  const shown = q ? candidates.filter((f) => f.name.toLowerCase().includes(q)) : candidates;
+  const setWatch = (ids: string[]) => onChange({ ...config, watchFieldIds: ids });
+  return (
+    <div className="tfu-cfg">
+      <label className="tfu-inline">
+        <input
+          type="radio"
+          name="tfu-watch"
+          checked={!specific}
+          onChange={() => {
+            setSpecific(false);
+            onChange({ ...config, watchFieldIds: null });
+          }}
+        />
+        All editable fields
+      </label>
+      <label className="tfu-inline">
+        <input
+          type="radio"
+          name="tfu-watch"
+          checked={specific}
+          onChange={() => {
+            setSpecific(true);
+            setWatch(watch);
+          }}
+        />
+        Specific fields
+      </label>
+      {specific ? (
+        <div style={{ border: "1px solid #e1e3e8", borderRadius: 6, padding: 6, display: "flex", flexDirection: "column", gap: 2 }}>
+          {candidates.length > 8 ? (
+            <input className="tfu-input" placeholder="Find a field" value={query} onChange={(e) => setQuery(e.target.value)} />
+          ) : null}
+          <div style={{ maxHeight: 180, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+            {shown.map((f) => (
+              <label key={f.id} className="tfu-inline" style={{ padding: "2px 4px" }}>
+                <input
+                  type="checkbox"
+                  checked={watch.includes(f.id)}
+                  onChange={(e) => setWatch(e.target.checked ? [...watch, f.id] : watch.filter((x) => x !== f.id))}
+                />
+                <span>
+                  {fieldTypeIcon(f.type)} {f.name}
+                </span>
+              </label>
+            ))}
+            {shown.length === 0 ? <span className="tfu-muted">No fields</span> : null}
+          </div>
+          <span className="tfu-muted" style={{ fontSize: 12 }}>
+            {watch.length === 0
+              ? "Choose at least one field."
+              : `Updates when ${watch.length === 1 ? "this field changes" : `any of these ${watch.length} fields change`}. Records not edited since stay empty.`}
+          </span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** Type-specific configuration form. */
 export function FieldConfigEditor({
   type,
@@ -667,6 +750,8 @@ export function FieldConfigEditor({
           </label>
         </div>
       );
+    case "modified_time":
+      return <LastModifiedConfig config={config} onChange={onChange} fields={fields} fieldId={fieldId} />;
     case "lookup":
     case "rollup":
     case "count":

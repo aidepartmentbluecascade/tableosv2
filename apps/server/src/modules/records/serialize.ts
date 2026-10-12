@@ -228,6 +228,12 @@ async function loadLinkInfo(db: Db, fieldIds: string[]): Promise<Map<string, Lin
 
 /* ───────────────────────── primary display ───────────────────────── */
 
+/** A Last modified time field that watches specific fields keeps its own time in its cell. */
+export function watchesFields(config: Record<string, unknown> | null | undefined): boolean {
+  const w = config?.["watchFieldIds"];
+  return Array.isArray(w) && w.length > 0;
+}
+
 export interface PrimaryFieldInfo {
   slot: number;
   type: string;
@@ -253,6 +259,7 @@ export function displayText(
     case "created_time":
       return toIso(row.created_at) ?? "";
     case "modified_time":
+      if (watchesFields(field.config)) return typeof stored === "string" ? stored : "";
       return toIso(row.updated_at ?? row.created_at) ?? "";
     default:
       break;
@@ -483,7 +490,9 @@ export async function serializeRecords(
           value = toIso(row.created_at);
           break;
         case "modified_time":
-          value = toIso(row.updated_at ?? row.created_at);
+          value = watchesFields(f.config)
+            ? typeof cells[key] === "string" ? cells[key] : undefined
+            : toIso(row.updated_at ?? row.created_at);
           break;
         case "created_by":
           value = row.created_by ? users.get(row.created_by) : undefined;

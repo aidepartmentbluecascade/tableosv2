@@ -875,7 +875,15 @@ export const fieldDefinitions: FieldTypeDefinition[] = [
     key: "modified_time",
     label: "Last modified time",
     readOnly: true,
-    config: datetimeConfig,
+    config: (i) => {
+      const cfg = datetimeConfig(i);
+      const watch = i["watchFieldIds"];
+      if (Array.isArray(watch)) {
+        const ids = [...new Set(watch.filter((x): x is string => typeof x === "string" && x.length > 0))];
+        if (ids.length > 0) cfg["watchFieldIds"] = ids;
+      }
+      return cfg;
+    },
     normalize: readOnlyNormalize("Last modified time"),
   }),
   def({

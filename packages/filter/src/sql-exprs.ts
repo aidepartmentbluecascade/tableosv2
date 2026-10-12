@@ -77,8 +77,14 @@ export function metaColumn(f: SqlFieldInfo, a: string): { expr: string; type: Sq
       return { expr: `data.encode_public_id('rec', ${a}.id)`, type: "text" };
     case "created_time":
       return { expr: `${a}.created_at`, type: "timestamptz" };
-    case "modified_time":
+    case "modified_time": {
+      // Watching specific fields: the server stamps an ISO time into the field's own cell.
+      const w = f.config?.["watchFieldIds"];
+      if (Array.isArray(w) && w.length > 0) {
+        return { expr: tsOfText(`(${a}.cells->>'${slotKey(f)}')`), type: "timestamptz" };
+      }
       return { expr: `${a}.updated_at`, type: "timestamptz" };
+    }
     case "created_by":
       return { expr: `${a}.created_by`, type: "text" };
     case "modified_by":

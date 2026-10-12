@@ -98,6 +98,15 @@ export function configToWire(
     case "count":
       c["linkFieldId"] = pidOrNull("fld", c["linkFieldId"]);
       break;
+    case "modified_time":
+      if (Array.isArray(c["watchFieldIds"])) {
+        const ids = (c["watchFieldIds"] as unknown[])
+          .filter((id) => typeof id === "string" && nameById.has(id))
+          .map((id) => pid("fld", id as string));
+        if (ids.length) c["watchFieldIds"] = ids;
+        else delete c["watchFieldIds"];
+      }
+      break;
     case "formula": {
       const expr = typeof c["expression"] === "string" ? c["expression"] : typeof c["formula"] === "string" ? c["formula"] : "";
       c["expression"] = formulaToDisplay(expr, nameById);
@@ -161,6 +170,13 @@ export interface ConfigResolveContext {
   /** Existing stored config (keeps link relation / inverse ids on update). */
   existing?: Record<string, unknown>;
 }
+
+/** Fields a Last modified time field can watch: values people (or syncs) edit. */
+const UNWATCHABLE = new Set([
+  "formula", "lookup", "rollup", "count", "ai_generated", "autonumber", "record_id",
+  "created_time", "modified_time", "created_by", "modified_by", "button",
+]);
+export const WATCHABLE = (type: string): boolean => !UNWATCHABLE.has(type);
 
 function invalid(detail: string): never {
   throw new ApiError(422, "VALIDATION_FAILED", detail);
@@ -296,6 +312,20 @@ export async function configFromWire(
       if (raw["options"] === undefined && !ctx.existing) {
         raw["options"] = [];
       }
+      break;
+    }
+    case "modified_time": {
+      const watch = raw["watchFieldIds"] === undefined ? ctx.existing?.["watchFieldIds"] : raw["watchFieldIds"];
+      if (watch === undefined || watch === null) break;
+      if (!Array.isArray(watch)) invalid("config.watchFieldIds must be a list of fields");
+      const ids: string[] = [];
+      for (const ref of watch) {
+        const f = typeof ref === "string" ? findFieldByRef(ctx.tableFields, ref) : undefined;
+        if (!f) invalid("config.watchFieldIds: field not found in this table");
+        if (f.id === ctx.fieldId || !WATCHABLE(f.type)) invalid(`A Last modified time field can't watch "${f.name}"`);
+        if (!ids.includes(f.id)) ids.push(f.id);
+      }
+      raw["watchFieldIds"] = ids;
       break;
     }
     case "button": {

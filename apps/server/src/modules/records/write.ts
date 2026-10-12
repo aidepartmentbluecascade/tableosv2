@@ -237,6 +237,31 @@ export class TableWriter {
     return ids;
   }
 
+  /**
+   * Last modified time fields that watch specific fields get `now` in their cell when one of those
+   * fields changes (`old` null = new record: any non-empty watched value counts).
+   */
+  stampWatched(cells: Record<string, unknown>, p: PreparedFields, old: Record<string, unknown> | null): Record<string, unknown> {
+    let out = cells;
+    for (const f of this.schema.fields) {
+      const watch = f.type === "modified_time" ? f.config["watchFieldIds"] : undefined;
+      if (!Array.isArray(watch) || watch.length === 0) continue;
+      const hit = watch.some((id) => {
+        if (typeof id !== "string" || !p.fieldIds.has(id)) return false;
+        const w = this.schema.byId.get(id);
+        if (!w) return false;
+        if (LINK_TYPES.has(w.type)) return old !== null || (p.links.get(id)?.length ?? 0) > 0;
+        const k = String(w.slot);
+        return old === null ? cells[k] !== undefined && cells[k] !== null : stableJson(cells[k]) !== stableJson(old[k]);
+      });
+      if (hit) {
+        if (out === cells) out = { ...cells };
+        out[String(f.slot)] = new Date().toISOString();
+      }
+    }
+    return out;
+  }
+
   /** Field ids of auto "last modified" fields (affected by any update). */
   get modifiedMetaFieldIds(): string[] {
     return this.schema.fields.filter((f) => f.type === "modified_time" || f.type === "modified_by").map((f) => f.id);
@@ -428,7 +453,7 @@ export async function createRecordsInTx(
   const effects: LinkEffects = { changes: [], diffs: [] };
   for (let i = 0; i < n; i++) {
     const id = ids[i]!;
-    const cells = applyCells({}, prepared[i]!.cells);
+    const cells = writer.stampWatched(applyCells({}, prepared[i]!.cells), prepared[i]!, null);
     await sql`
       INSERT INTO data.records (
         table_id, id, workspace_id, base_id, row_number, manual_order, cells,
@@ -532,14 +557,15 @@ export async function updateRecordsInTx(
     const row = byId.get(id)!;
     const p = prepared[i]!;
     const oldCells = (row.cells ?? {}) as Record<string, unknown>;
-    const merged = writer.stripLinkSlots(applyCells(oldCells, p.cells));
-    if (ctx.via === "system" && p.links.size === 0 && stableJson(merged) === stableJson(oldCells)) {
+    const unstamped = writer.stripLinkSlots(applyCells(oldCells, p.cells));
+    if (ctx.via === "system" && p.links.size === 0 && stableJson(unstamped) === stableJson(oldCells)) {
       // Sync re-delivering values the record already has.
       versions.set(id, Number(row.version));
       before.set(id, oldCells);
-      after.set(id, merged);
+      after.set(id, unstamped);
       continue;
     }
+    const merged = writer.stampWatched(unstamped, p, oldCells);
     if (ctx.via !== "system") edits.set(id, [...p.fieldIds]);
     const newVersion = Number(row.version) + 1;
     await sql`

@@ -25,6 +25,7 @@ import { QueueNames, createQueue } from "@tabula/jobs";
 import type { Redis } from "ioredis";
 import { sql, type Kysely } from "kysely";
 import { pid } from "../../lib/public-ids.js";
+import { watchesFields } from "../records/serialize.js";
 import type { Db } from "../schema/table-schema.js";
 
 export const ERRORS_KEY = "_errors";
@@ -369,7 +370,7 @@ class ComputeRun {
       case "created_time":
         return row.createdAt;
       case "modified_time":
-        return row.updatedAt;
+        return watchesFields(prim.config) ? String(row.cells[String(prim.slot)] ?? "") : row.updatedAt;
       case "link":
       case "contact":
         return "";
@@ -415,7 +416,7 @@ class ComputeRun {
       case "created_time":
         return row.createdAt;
       case "modified_time":
-        return row.updatedAt;
+        return watchesFields(f.config) ? row.cells[String(f.slot)] : row.updatedAt;
       case "created_by":
         return row.createdBy ?? undefined;
       case "modified_by":
