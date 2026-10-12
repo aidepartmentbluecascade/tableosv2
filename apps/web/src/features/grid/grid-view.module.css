@@ -253,8 +253,19 @@
   background: var(--focus-bg) !important;
 }
 
+/* Highlighted cells sit above their neighbours but below the frozen columns (z-index 2),
+   so they slide underneath them on horizontal scroll; frozen ones stay on top of other frozen cells. */
 .active {
+  z-index: 1;
+}
+
+.frozen.active,
+.frozen.peerCell {
   z-index: 3;
+}
+
+.frozen.editingCell {
+  z-index: 4;
 }
 
 .active::after {
@@ -267,7 +278,7 @@
 }
 
 .peerCell {
-  z-index: 3;
+  z-index: 1;
 }
 
 .peerCell::before {
@@ -302,7 +313,7 @@
 }
 
 .editingCell {
-  z-index: 5;
+  z-index: 1;
   overflow: visible;
 }
 
