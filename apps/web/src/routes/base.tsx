@@ -9,7 +9,8 @@ import {
 } from "../features/base/BaseSessionProvider.tsx";
 import { PresenceAvatars } from "../features/base/PresenceAvatars.tsx";
 import { ToolsMenu } from "../features/base/ToolsMenu.tsx";
-import { TableTabs } from "../features/base/TableTabs.tsx";
+import { TableTabs, type AddMode } from "../features/base/TableTabs.tsx";
+import { ConnectorsDialog } from "../features/base/ConnectorsDialog.tsx";
 import { TrashDialog } from "../features/base/TrashDialog.tsx";
 import { AccountMenu } from "../features/base/AccountMenu.tsx";
 import { useUndoRedo } from "../features/base/useUndoRedo.ts";
@@ -97,6 +98,9 @@ export function BasePage({ baseId }: { baseId: string }) {
   const [exportTableId, setExportTableId] = useState<string | null>(null);
   const [fieldsOpen, setFieldsOpen] = useState(false);
   const [trashOpen, setTrashOpen] = useState(false);
+  const [connectorsOpen, setConnectorsOpen] = useState(false);
+  const [openAdd, setOpenAdd] = useState<AddMode | null>(null);
+  const clearOpenAdd = useCallback(() => setOpenAdd(null), []);
   const [baseDialog, setBaseDialog] = useState<"rename" | "delete" | null>(null);
   const [pendingImport, setPendingImport] = useState(() => readSearchFlag("import"));
 
@@ -325,6 +329,7 @@ export function BasePage({ baseId }: { baseId: string }) {
                       .then(() => toast.success("Base ID copied"))
                       .catch(() => toast.info(baseId)),
                 },
+                { key: "connectors", icon: "⇄", label: "Connectors", onSelect: () => setConnectorsOpen(true) },
                 { key: "trash", icon: "🗑", label: "Trash", onSelect: () => setTrashOpen(true) },
                 {
                   key: "delete",
@@ -391,6 +396,8 @@ export function BasePage({ baseId }: { baseId: string }) {
                 }}
                 onImport={(id) => setImportTableId(id)}
                 onExport={(id) => setExportTableId(id)}
+                openAdd={openAdd}
+                onOpenAddHandled={clearOpenAdd}
               />
               <ToolsMenu
                 disabled={!activeTable}
@@ -398,6 +405,7 @@ export function BasePage({ baseId }: { baseId: string }) {
                 onImport={() => resolvedTableId && setImportTableId(resolvedTableId)}
                 onExport={() => resolvedTableId && setExportTableId(resolvedTableId)}
                 onTrash={() => setTrashOpen(true)}
+                onConnectors={() => setConnectorsOpen(true)}
               />
             </div>
 
@@ -515,6 +523,24 @@ export function BasePage({ baseId }: { baseId: string }) {
         />
       ) : null}
       {trashOpen ? <TrashDialog baseId={baseId} onClose={() => setTrashOpen(false)} /> : null}
+      {connectorsOpen ? (
+        <ConnectorsDialog
+          baseId={baseId}
+          tables={tables}
+          onClose={() => setConnectorsOpen(false)}
+          onOpenTable={(id) => {
+            setConnectorsOpen(false);
+            setBaseTab("data");
+            setActiveTableId(id);
+            setActiveViewId(null);
+          }}
+          onSyncTable={() => {
+            setConnectorsOpen(false);
+            setBaseTab("data");
+            setOpenAdd("hubspot");
+          }}
+        />
+      ) : null}
       {baseDialog === "rename" ? (
         <PromptDialog
           title="Rename base"

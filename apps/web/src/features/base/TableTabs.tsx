@@ -126,7 +126,7 @@ function InlineRename({
   );
 }
 
-type AddMode = "blank" | "import" | "sync" | "hubspot";
+export type AddMode = "blank" | "import" | "sync" | "hubspot";
 
 function AddTableDialog({
   baseId,
@@ -668,6 +668,8 @@ export function TableTabs({
   onSelect,
   onImport,
   onExport,
+  openAdd,
+  onOpenAddHandled,
 }: {
   baseId: string;
   tables: TableDto[];
@@ -676,11 +678,19 @@ export function TableTabs({
   onSelect: (tableId: string) => void;
   onImport: (tableId: string) => void;
   onExport: (tableId: string) => void;
+  /** Open the add-table dialog from elsewhere (e.g. Tools → Connectors). */
+  openAdd?: AddMode | null;
+  onOpenAddHandled?: () => void;
 }) {
   const qc = useQueryClient();
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<TableDto | null>(null);
   const [adding, setAdding] = useState<AddMode | null>(null);
+  useEffect(() => {
+    if (!openAdd) return;
+    setAdding(openAdd);
+    onOpenAddHandled?.();
+  }, [openAdd, onOpenAddHandled]);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);

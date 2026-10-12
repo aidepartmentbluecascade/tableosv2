@@ -154,7 +154,8 @@
   padding: 0 12px;
   height: 40px;
   min-width: 0;
-  overflow: hidden;
+  /* Visible so the Tools menu can drop below the bar; the tab strip clips itself. */
+  overflow: visible;
   border-bottom: 1px solid var(--tabula-color-border);
   background: var(--tabula-color-bg-subtle);
 }

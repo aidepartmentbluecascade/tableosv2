@@ -12,7 +12,7 @@ export interface HubSpotSelection {
   twoWay: boolean;
 }
 
-function ConnectHubSpot({ baseId, onConnected, onCancel }: { baseId: string; onConnected: (id: string) => void; onCancel?: () => void }) {
+export function ConnectHubSpot({ baseId, onConnected, onCancel }: { baseId: string; onConnected: (id: string) => void; onCancel?: () => void }) {
   const qc = useQueryClient();
   const [token, setToken] = useState("");
   const [name, setName] = useState("");

@@ -34,6 +34,7 @@ export function syncDto(s: SyncRow, names: { baseName: string; tableName: string
   return {
     id: s.id,
     provider: s.provider,
+    connectionId: s.connection_id,
     sourceBaseId: s.source_base_id ? pid("bas", s.source_base_id) : null,
     sourceTableId: s.source_table_id ? pid("tbl", s.source_table_id) : null,
     sourceBaseName: names?.baseName ?? null,

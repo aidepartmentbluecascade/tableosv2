@@ -181,6 +181,8 @@ export interface FieldDto {
 export interface TableSyncInfo {
   id: string;
   provider: "tableos" | "hubspot";
+  /** External account the data comes from (HubSpot); null for base-to-base syncs. */
+  connectionId: string | null;
   /** Null for external sources such as HubSpot. */
   sourceBaseId: string | null;
   sourceTableId: string | null;

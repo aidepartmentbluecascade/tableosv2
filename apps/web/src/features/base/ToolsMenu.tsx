@@ -7,12 +7,14 @@ export function ToolsMenu({
   onImport,
   onExport,
   onTrash,
+  onConnectors,
   disabled,
 }: {
   onManageFields: () => void;
   onImport: () => void;
   onExport: () => void;
   onTrash: () => void;
+  onConnectors: () => void;
   disabled?: boolean;
 }) {
   const detail = (title: string, text: string) => (
@@ -53,6 +55,12 @@ export function ToolsMenu({
           icon: "⤒",
           label: detail("Export CSV", "Download this view as a CSV file"),
           onSelect: onExport,
+        },
+        {
+          key: "connectors",
+          icon: "⇄",
+          label: detail("Connectors", "HubSpot accounts and synced tables"),
+          onSelect: onConnectors,
         },
         {
           key: "trash",
