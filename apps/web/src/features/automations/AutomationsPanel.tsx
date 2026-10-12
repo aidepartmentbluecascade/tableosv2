@@ -20,6 +20,8 @@ import {
 } from "./catalog.ts";
 import { ActionEditor, TriggerEditor } from "./editors.tsx";
 import { RunDetail, RunHistory } from "./RunHistory.tsx";
+import { labelableFields, lastRecord, parseRecordRef, recordLabel } from "./test-record.ts";
+import { recordsApi } from "../../lib/api-areas/records.ts";
 import styles from "./automations.module.css";
 
 type Selection = { kind: "trigger" } | { kind: "action"; id: string } | null;
@@ -621,16 +623,58 @@ function TestPanel({
   const [result, setResult] = useState<AutomationRun | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const labelKey = `tableos.testLabel.${automation.id}.${table?.id ?? ""}`;
+  const [labelBy, setLabelByState] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(labelKey);
+    } catch {
+      return null;
+    }
+  });
+  const setLabelBy = (v: string | null) => {
+    setLabelByState(v);
+    try {
+      if (v) localStorage.setItem(labelKey, v);
+      else localStorage.removeItem(labelKey);
+    } catch {
+      // not persisted
+    }
+  };
+  const pastedId = parseRecordRef(search);
   const recordsQuery = useQuery({
     queryKey: ["records", baseId, table?.id ?? "", "automation-test", search],
-    enabled: Boolean(info?.needsTable && table),
+    enabled: Boolean(info?.needsTable && table) && !pastedId,
     queryFn: () =>
       request<{ records: RecordRow[] }>(`/v1/bases/${baseId}/tables/${table!.id}/records/query`, {
         method: "POST",
         json: { pageSize: 50, ...(search.trim() ? { search: search.trim() } : {}) },
       }),
   });
-  const primary = table?.fields.find((f) => f.id === table.primaryFieldId) ?? table?.fields[0];
+  // A pasted record ID / link, and the record last selected in this table's grid.
+  const lastId = table ? lastRecord(table.id) : null;
+  const pinnedIds = [...new Set([pastedId, lastId].filter((x): x is string => Boolean(x)))];
+  const pinnedQuery = useQuery({
+    queryKey: ["records", baseId, table?.id ?? "", "automation-test-pinned", pinnedIds.join(",")],
+    enabled: Boolean(info?.needsTable && table) && pinnedIds.length > 0,
+    retry: false,
+    queryFn: async () => {
+      const out: RecordRow[] = [];
+      for (const id of pinnedIds) {
+        try {
+          const r = await recordsApi.get(baseId, table!.id, id);
+          if (r) out.push({ id: r.id, fields: r.fields as Record<string, unknown> });
+        } catch {
+          // not in this table / deleted
+        }
+      }
+      return out;
+    },
+  });
+  const pasted = pastedId ? pinnedQuery.data?.find((r) => r.id === pastedId) : undefined;
+  const last = lastId ? pinnedQuery.data?.find((r) => r.id === lastId) : undefined;
+  useEffect(() => {
+    if (pasted) setRecordId(pasted.id);
+  }, [pasted]);
 
   const testMutation = useMutation({
     mutationFn: async () => {
@@ -658,7 +702,11 @@ function TestPanel({
     },
   });
 
-  const records = recordsQuery.data?.records ?? [];
+  const listed = pastedId ? (pasted ? [pasted] : []) : (recordsQuery.data?.records ?? []);
+  const selectedExtra = recordId && !listed.some((r) => r.id === recordId) ? pinnedQuery.data?.find((r) => r.id === recordId) : undefined;
+  const records = selectedExtra ? [selectedExtra, ...listed] : listed;
+  const loading = pastedId ? pinnedQuery.isLoading : recordsQuery.isLoading;
+  const label = (r: RecordRow) => (table ? recordLabel(table, r.fields, labelBy) : r.id);
   return (
     <div className={styles.testPanel}>
       <h4 className={styles.testTitle}>Test automation</h4>
@@ -666,19 +714,38 @@ function TestPanel({
       {info?.needsTable ? (
         table ? (
           <>
-            <input className={styles.input} placeholder="Search records" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search records" />
+            {last && recordId !== last.id ? (
+              <button type="button" className={styles.testShortcut} onClick={() => setRecordId(last.id)}>
+                <span className={styles.muted}>Use the record selected in the grid:</span> <strong>{label(last)}</strong>
+              </button>
+            ) : null}
+            <input
+              className={styles.input}
+              placeholder="Search any field, or paste a record ID / link"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search records"
+            />
+            {pastedId && !pinnedQuery.isLoading && !pasted ? <span className={styles.hint}>No record {pastedId} in {table.name}.</span> : null}
             <select className={styles.select} value={recordId} onChange={(e) => setRecordId(e.target.value)} aria-label="Record to test with">
-              <option value="">{recordsQuery.isLoading ? "Loading records…" : records.length ? "Choose a record" : "No records found"}</option>
-              {records.map((r) => {
-                const v = primary ? r.fields[primary.id] : undefined;
-                const label = typeof v === "string" || typeof v === "number" ? String(v) : "Unnamed record";
-                return (
-                  <option key={r.id} value={r.id}>
-                    {label}
-                  </option>
-                );
-              })}
+              <option value="">{loading ? "Loading records…" : records.length ? "Choose a record" : "No records found"}</option>
+              {records.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {label(r)}
+                </option>
+              ))}
             </select>
+            <label className={styles.testLabelBy}>
+              <span className={styles.muted}>Label records by</span>
+              <select className={styles.selectCompact} value={labelBy ?? ""} onChange={(e) => setLabelBy(e.target.value || null)}>
+                <option value="">Primary field + details</option>
+                {labelableFields(table).map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           </>
         ) : (
           <p className={styles.muted}>Choose the trigger table first.</p>

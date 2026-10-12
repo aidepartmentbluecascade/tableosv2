@@ -1052,6 +1052,31 @@
   border: 1px solid var(--tabula-color-border);
   border-radius: var(--tabula-radius-sm);
 }
+.testShortcut {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px dashed var(--tabula-color-info-border);
+  border-radius: var(--tabula-radius-sm);
+  background: var(--tabula-color-bg);
+  color: var(--tabula-color-text);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.testLabelBy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--tabula-space-2);
+  font-size: 12px;
+}
+.testLabelBy .selectCompact {
+  max-width: 60%;
+  font-size: 12px;
+}
 .outputView {
   display: flex;
   flex-direction: column;

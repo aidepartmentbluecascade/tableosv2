@@ -66,6 +66,7 @@ import {
   type SummaryKind,
 } from "./grid-utils.ts";
 import { ConfirmDialog, Menu, type MenuEntry } from "./Menu.tsx";
+import { rememberRecord } from "../automations/test-record.ts";
 import { Toaster, toastError, toastInfo } from "./toast.tsx";
 import { noteRecordVersion, useRecordWrites } from "./useRecordWrites.ts";
 import styles from "./grid-view.module.css";
@@ -107,6 +108,8 @@ type Item =
   | { kind: "group"; path: string; depth: number; field: Field; label: string; color?: string | undefined; count: number; collapsed: boolean };
 
 const PAGE_SIZE = 200;
+/** Field types the server refuses as a table's primary field. */
+const NON_PRIMARY_TYPES = new Set(["button", "link", "contact", "attachment", "checkbox"]);
 /** Later pages are bigger (server max) so jumping far down a large table catches up quickly. */
 const NEXT_PAGE_SIZE = 500;
 
@@ -426,6 +429,9 @@ export function GridView(props: GridViewProps) {
 
   // ------------------------------------------------------------------ selection
   const [active, setActive] = useState<Cell | null>(null);
+  useEffect(() => {
+    if (active?.r) rememberRecord(table.id, active.r);
+  }, [active?.r, table.id]);
   const [anchor, setAnchor] = useState<Cell | null>(null);
   const [editing, setEditing] = useState<(Cell & { initialText?: string | undefined }) | null>(null);
   const editingRef = useRef(editing);
@@ -789,7 +795,7 @@ export function GridView(props: GridViewProps) {
   }, []);
 
   // ------------------------------------------------------------------ record ops
-  const [confirm, setConfirm] = useState<null | { title: string; body?: ReactNode; label: string; run: () => void }>(null);
+  const [confirm, setConfirm] = useState<null | { title: string; body?: ReactNode; label: string; danger?: boolean; run: () => void }>(null);
 
   const createRecordAt = useCallback(
     async (pos?: { before?: string; after?: string }) => {
@@ -927,6 +933,24 @@ export function GridView(props: GridViewProps) {
         { key: "dup", icon: "⧉", label: "Duplicate field", disabled: !canEditSchema, onSelect: () => void fieldActions.duplicate(field as FieldWire, true).catch(() => undefined) },
         { key: "left", icon: "←", label: "Insert left", disabled: !canEditSchema || isPrimary, onSelect: () => setFieldDialog({ insert: { at: field.id, side: "left" } }) },
         { key: "right", icon: "→", label: "Insert right", disabled: !canEditSchema, onSelect: () => setFieldDialog({ insert: { at: field.id, side: "right" } }) },
+        ...(isPrimary
+          ? []
+          : [
+              {
+                key: "primary",
+                icon: "★",
+                label: NON_PRIMARY_TYPES.has(field.type) ? `A ${field.type} field can't be the primary field` : "Set as primary field",
+                disabled: !canEditSchema || NON_PRIMARY_TYPES.has(field.type),
+                onSelect: () =>
+                  setConfirm({
+                    title: `Make "${field.name}" the primary field?`,
+                    body: "It moves to the first column and names each record in links, cards, search and automation tests. The current primary field stays as a normal field; no data changes.",
+                    label: "Set as primary",
+                    danger: false,
+                    run: () => void fieldActions.setPrimary(field.id).catch(() => undefined),
+                  }),
+              } satisfies MenuEntry,
+            ]),
         { key: "d0", label: "", divider: true },
         { key: "copyurl", icon: "🔗", label: "Copy field URL", onSelect: () => void copyText(`${window.location.origin}${window.location.pathname}?field=${field.id}`) },
         { key: "copyid", icon: "#", label: "Copy field ID", hint: field.id, onSelect: () => void copyText(field.id) },
@@ -1719,6 +1743,7 @@ export function GridView(props: GridViewProps) {
             title={confirm.title}
             body={confirm.body}
             confirmLabel={confirm.label}
+            danger={confirm.danger ?? true}
             onCancel={() => setConfirm(null)}
             onConfirm={() => {
               const c = confirm;

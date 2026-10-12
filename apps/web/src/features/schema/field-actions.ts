@@ -82,6 +82,11 @@ export function useFieldActions(baseId: string, tableId: string) {
           await refresh();
           return f;
         }),
+      setPrimary: (fieldId: string) =>
+        wrap("Couldn't change the primary field", async () => {
+          await fieldsApi.setPrimary(baseId, tableId, fieldId);
+          await refresh();
+        }),
       reorder: (fieldIds: string[]) =>
         wrap("Couldn't reorder fields", async () => {
           await fieldsApi.reorder(baseId, tableId, fieldIds);

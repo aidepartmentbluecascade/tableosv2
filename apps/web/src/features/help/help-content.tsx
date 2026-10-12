@@ -157,7 +157,7 @@ export const HELP_TOPICS: HelpTopic[] = [
             <li><b>Reorder:</b> drag a header. <b>Resize:</b> drag the header’s right edge.</li>
             <li>
               <b>Primary field:</b> the first column names each record (in links, cards and search). It can’t be hidden or deleted, but you
-              can change its type.
+              can change its type, or make another field the primary one (column menu → <b>Set as primary field</b>).
             </li>
             <li><b>Change a type:</b> TableOS converts existing values where it can. Changes can be undone with <K>Ctrl</K>+<K>Z</K>.</li>
             <li><b>Description:</b> add one in the field dialog; it appears as a tooltip on the header.</li>
